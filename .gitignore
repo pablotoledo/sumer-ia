@@ -144,6 +144,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Archivos de configuración locales fast-agent
+fastagent.config.local.yaml
+
 # Spyder project settings
 .spyderproject
 .spyproject

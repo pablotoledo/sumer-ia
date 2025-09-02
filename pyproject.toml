@@ -1,0 +1,24 @@
+[project]
+name = "sumer-ia"
+version = "0.1.0"
+description = "Un flujo de trabajo de agentes para estructurar transcripciones largas."
+authors = [
+    {name = "Pablo Toledo", email = "pablo@example.com"}
+]
+requires-python = ">=3.9"
+dependencies = [
+    "fast-agent-mcp",
+    "sentence-transformers",
+    "hdbscan",
+    "scikit-learn",
+    "transformers",
+    "torch",
+    # Añade aquí otras librerías que necesites
+]
+
+[tool.uv.scripts]
+start = "python main.py"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
