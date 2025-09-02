@@ -13,7 +13,6 @@ dependencies = [
     "scikit-learn",
     "transformers",
     "torch",
-    # Añade aquí otras librerías que necesites
 ]
 
 [tool.uv.scripts]
