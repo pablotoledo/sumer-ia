@@ -1,0 +1,17 @@
+# Configuración de proveedores de LLM
+# Reemplaza "YOUR_API_KEY" con tus claves reales.
+providers:
+  anthropic:
+    api_key: "YOUR_ANTHROPIC_API_KEY"
+  openai:
+    api_key: "YOUR_OPENAI_API_KEY"
+  # Puedes añadir otros proveedores soportados aquí
+
+# Configuración de servidores MCP (herramientas externas)
+mcp:
+  servers:
+    # Servidor para las herramientas de verificación de fidelidad y alucinaciones
+    verification_tools:
+      # Comando para iniciar el servidor. Asume que tienes un script que lo hace.
+      command: "uv"
+      args: ["run", "tools/verification_server.py", "--server"]
