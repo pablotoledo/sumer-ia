@@ -1,0 +1,48 @@
+# FastAgent Configuration for Rate-Limited Scenarios
+# Optimized for Azure OpenAI S0 tier with low rate limits
+
+default_model: azure.gpt-4.1
+
+# Generic/Ollama configuration for remote server
+generic:
+  api_key: "ollama"
+  base_url: "http://192.168.1.100:11434/v1"  # Your Ollama server IP
+
+# Azure OpenAI configuration (fallback)
+azure:
+  api_key: "YOUR_AZURE_API_KEY_HERE"
+  base_url: "https://your-resource-name.cognitiveservices.azure.com/"
+  azure_deployment: "gpt-4.1"
+  api_version: "2025-01-01-preview"
+  # Rate limiting settings - Ultra conservative
+  max_retries: 8
+  retry_delay: 90
+  timeout: 180
+
+# Logging and Console Configuration
+logger:
+  progress_display: true
+  show_chat: true
+  show_tools: true
+  truncate_tools: true
+  # Enhanced logging for debugging rate limits
+  level: "info"
+
+# Rate limiting configuration
+rate_limiting:
+  # Ultra conservative for S0 tier
+  max_tokens_per_request: 50000   # Very reduced
+  requests_per_minute: 3          # Very conservative rate
+  backoff_factor: 3.0             # More aggressive backoff
+  max_backoff: 600                # Max 10 minutes wait
+  delay_between_requests: 30      # Wait 30s between requests
+
+# MCP Servers
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
