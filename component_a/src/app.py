@@ -325,7 +325,15 @@ def main():
         
         # Display file info
         file_size_mb = uploaded_file.size / (1024 * 1024)
-        st.success(f"✅ File loaded: {uploaded_file.name} ({file_size_mb:.1f} MB)")
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.success(f"✅ File loaded: {uploaded_file.name} ({file_size_mb:.1f} MB)")
+        
+        with col2:
+            # Estimate audio duration (rough)
+            estimated_duration_hours = file_size_mb / 10  # Rough estimate: 10MB per hour
+            st.info(f"⏱️ ~{estimated_duration_hours:.1f}h audio")
         
         # Configuration sidebar
         st.sidebar.header("⚙️ Configuration")
@@ -493,11 +501,31 @@ def main():
             )
             
             if enable_diarization:
+                st.sidebar.info("🎯 **Speaker Detection Settings**")
                 col1, col2 = st.sidebar.columns(2)
                 with col1:
-                    min_speakers = st.number_input("Min Speakers", 1, 10, 2)
+                    min_speakers = st.sidebar.number_input(
+                        "Min Speakers", 
+                        min_value=1, 
+                        max_value=10, 
+                        value=2,
+                        help="Minimum number of speakers expected",
+                        key="min_speakers_input"
+                    )
                 with col2:
-                    max_speakers = st.number_input("Max Speakers", 1, 10, 4)
+                    max_speakers = st.sidebar.number_input(
+                        "Max Speakers", 
+                        min_value=1, 
+                        max_value=10, 
+                        value=4,
+                        help="Maximum number of speakers expected",
+                        key="max_speakers_input"
+                    )
+                
+                # Validation
+                if min_speakers > max_speakers:
+                    st.sidebar.error("⚠️ Min speakers cannot be greater than max speakers!")
+                    min_speakers = max_speakers
             else:
                 min_speakers = max_speakers = 1
             
@@ -516,11 +544,35 @@ def main():
         # HuggingFace token (if diarization enabled)
         hf_token = None
         if processing_config.enable_diarization:
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("🔑 **Authentication Required**")
+            
             hf_token = st.sidebar.text_input(
                 "HuggingFace Token",
                 type="password",
+                placeholder="hf_xxxxxxxxxxxxx",
                 help="Required for speaker diarization. Get token at https://huggingface.co/settings/tokens"
             )
+            
+            if not hf_token:
+                st.sidebar.warning("⚠️ **HuggingFace token required for speaker diarization**")
+                st.sidebar.markdown("""
+                **Steps to get token:**
+                1. Go to [HuggingFace](https://huggingface.co/join) and create account (free)
+                2. Go to [Settings → Access Tokens](https://huggingface.co/settings/tokens)
+                3. Create new token with 'read' access
+                4. **Accept ALL model agreements** (click each link):
+                   - ✅ [speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+                   - ✅ [segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+                   - ✅ [speaker-diarization](https://huggingface.co/pyannote/speaker-diarization)
+                5. Copy your token (starts with `hf_`) and paste it above
+                """)
+            else:
+                if hf_token.startswith("hf_"):
+                    st.sidebar.success("✅ Valid HuggingFace token format")
+                else:
+                    st.sidebar.error("❌ Invalid token format. Should start with 'hf_'")
+                    hf_token = None
             
             if not hf_token:
                 st.sidebar.error("HuggingFace token required for diarization")
@@ -573,11 +625,58 @@ def main():
         st.sidebar.write(f"**RAM:** {memory_req['ram_gb']:.1f}GB") 
         st.sidebar.write(f"**Processing Time:** {estimate_processing_time(file_size_mb / 10, processing_config.model_name, processing_config.enable_diarization)}")
         
+        # Configuration Summary
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🎯 Current Configuration")
+        if processing_config.enable_diarization:
+            if hf_token:
+                st.sidebar.success(f"✅ **Speaker Diarization:** ON ({processing_config.min_speakers}-{processing_config.max_speakers} speakers)")
+            else:
+                st.sidebar.error("❌ **Speaker Diarization:** Token Missing")
+        else:
+            st.sidebar.info("ℹ️ **Speaker Diarization:** OFF")
+        
+        st.sidebar.write(f"**Model:** {processing_config.model_name}")
+        st.sidebar.write(f"**Device:** {hardware_config.device.upper()}")
+        st.sidebar.write(f"**Output:** {', '.join(output_formats)}")
+        
+        # Processing summary in main area
+        if output_formats:
+            st.markdown("---")
+            st.subheader("🎯 Ready to Process")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.info(f"**Model:** {processing_config.model_name}")
+            with col2:
+                if processing_config.enable_diarization and hf_token:
+                    st.success(f"**Speakers:** {processing_config.min_speakers}-{processing_config.max_speakers}")
+                else:
+                    st.warning("**Speakers:** Not detected")
+            with col3:
+                st.info(f"**Outputs:** {len(output_formats)} formats")
+        
+        # Initialize session state
+        if 'transcription_result' not in st.session_state:
+            st.session_state.transcription_result = None
+        if 'processing_completed' not in st.session_state:
+            st.session_state.processing_completed = False
+        if 'processing_time' not in st.session_state:
+            st.session_state.processing_time = 0
+        if 'output_formats' not in st.session_state:
+            st.session_state.output_formats = []
+        if 'converter_settings' not in st.session_state:
+            st.session_state.converter_settings = {}
+
         # Processing button
         if st.button("🚀 Start Transcription", type="primary", disabled=not output_formats):
             if processing_config.enable_diarization and not hf_token:
                 st.error("HuggingFace token is required for speaker diarization")
                 st.stop()
+            
+            # Reset session state for new processing
+            st.session_state.transcription_result = None
+            st.session_state.processing_completed = False
             
             # Create progress containers
             progress_container = st.container()
@@ -617,72 +716,22 @@ def main():
                 # Clean up temporary file
                 os.unlink(temp_audio_path)
                 
+                # Store results in session state
+                st.session_state.transcription_result = result
+                st.session_state.processing_completed = True
+                st.session_state.processing_time = processing_time
+                st.session_state.output_formats = output_formats
+                st.session_state.converter_settings = {
+                    'include_speaker_labels': include_speakers,
+                    'include_word_timestamps': include_word_timestamps,
+                    'include_confidence_scores': include_confidence
+                }
+                
                 # Success message
                 with status_container:
                     st.success(f"✅ Transcription completed in {processing_time:.1f} seconds!")
                 
-                # Display results
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    display_transcription_preview(result)
-                
-                with col2:
-                    display_transcription_stats(result)
-                
-                # Create format converter
-                converter = TranscriptionFormatConverter(
-                    include_speaker_labels=include_speakers,
-                    include_word_timestamps=include_word_timestamps,
-                    include_confidence_scores=include_confidence
-                )
-                
-                # Generate download package
-                download_data = create_download_package(result, output_formats, converter)
-                
-                # Download button
-                st.download_button(
-                    label="📦 Download Results (ZIP)",
-                    data=download_data,
-                    file_name=f"transcription_{Path(uploaded_file.name).stem}.zip",
-                    mime="application/zip",
-                    type="primary"
-                )
-                
-                # Individual format downloads
-                st.subheader("📄 Individual Downloads")
-                
-                download_cols = st.columns(min(len(output_formats), 4))
-                
-                for i, format_name in enumerate(output_formats):
-                    col_idx = i % 4
-                    
-                    with download_cols[col_idx]:
-                        if format_name == "JSON":
-                            content = converter.to_json(result)
-                            filename = f"transcription.json"
-                        elif format_name == "SRT":
-                            content = converter.to_srt(result)
-                            filename = f"transcription.srt"
-                        elif format_name == "VTT":
-                            content = converter.to_vtt(result)
-                            filename = f"transcription.vtt"
-                        elif format_name == "TXT":
-                            content = converter.to_txt(result)
-                            filename = f"transcription.txt"
-                        elif format_name == "CSV":
-                            content = converter.to_csv(result)
-                            filename = f"transcription.csv"
-                        elif format_name == "Word-level JSON":
-                            content = converter.to_word_level_json(result)
-                            filename = f"word_level.json"
-                        
-                        st.download_button(
-                            label=f"{format_name}",
-                            data=content.encode('utf-8'),
-                            file_name=filename,
-                            mime="text/plain"
-                        )
+                st.rerun()  # Refresh to show results
                 
             except Exception as e:
                 with status_container:
@@ -695,6 +744,88 @@ def main():
                         os.unlink(temp_audio_path)
                 except:
                     pass
+
+        # Display results from session state (persistent across interactions)
+        if st.session_state.processing_completed and st.session_state.transcription_result:
+            st.markdown("---")
+            st.success(f"✅ Transcription completed in {st.session_state.processing_time:.1f} seconds!")
+            
+            # Display results
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                display_transcription_preview(st.session_state.transcription_result)
+            
+            with col2:
+                display_transcription_stats(st.session_state.transcription_result)
+            
+            # Create format converter with saved settings
+            converter = TranscriptionFormatConverter(
+                include_speaker_labels=st.session_state.converter_settings['include_speaker_labels'],
+                include_word_timestamps=st.session_state.converter_settings['include_word_timestamps'],
+                include_confidence_scores=st.session_state.converter_settings['include_confidence_scores']
+            )
+            
+            # Generate download package
+            download_data = create_download_package(
+                st.session_state.transcription_result, 
+                st.session_state.output_formats, 
+                converter
+            )
+            
+            # Download button
+            st.download_button(
+                label="📦 Download Results (ZIP)",
+                data=download_data,
+                file_name=f"transcription_{uploaded_file.name if uploaded_file else 'result'}.zip",
+                mime="application/zip",
+                type="primary"
+            )
+            
+            # Individual format downloads
+            st.subheader("📄 Individual Downloads")
+            
+            download_cols = st.columns(min(len(st.session_state.output_formats), 4))
+            
+            for i, format_name in enumerate(st.session_state.output_formats):
+                col_idx = i % 4
+                
+                with download_cols[col_idx]:
+                    if format_name == "JSON":
+                        content = converter.to_json(st.session_state.transcription_result)
+                        filename = f"transcription.json"
+                    elif format_name == "SRT":
+                        content = converter.to_srt(st.session_state.transcription_result)
+                        filename = f"transcription.srt"
+                    elif format_name == "VTT":
+                        content = converter.to_vtt(st.session_state.transcription_result)
+                        filename = f"transcription.vtt"
+                    elif format_name == "TXT":
+                        content = converter.to_txt(st.session_state.transcription_result)
+                        filename = f"transcription.txt"
+                    elif format_name == "CSV":
+                        content = converter.to_csv(st.session_state.transcription_result)
+                        filename = f"transcription.csv"
+                    elif format_name == "Word-level JSON":
+                        content = converter.to_word_level_json(st.session_state.transcription_result)
+                        filename = f"word_level.json"
+                    
+                    st.download_button(
+                        label=f"📄 {format_name}",
+                        data=content.encode('utf-8'),
+                        file_name=filename,
+                        mime="text/plain",
+                        key=f"download_{format_name}_{i}"
+                    )
+            
+            # Clear results button
+            if st.button("🗑️ Clear Results", type="secondary"):
+                st.session_state.transcription_result = None
+                st.session_state.processing_completed = False
+                st.session_state.processing_time = 0
+                st.session_state.output_formats = []
+                st.session_state.converter_settings = {}
+                st.rerun()
     
     else:
         # Instructions when no file is uploaded
@@ -721,7 +852,11 @@ def main():
             ### About Speaker Diarization:
             
             Speaker diarization identifies "who spoke when" in the audio. It requires:
-            - A HuggingFace account and token (free at huggingface.co)
+            - A HuggingFace account and token (free at [huggingface.co](https://huggingface.co/join))
+            - Accept model agreements for these 3 models:
+              - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+              - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+              - [pyannote/speaker-diarization](https://huggingface.co/pyannote/speaker-diarization)
             - Additional processing time (2-3x longer)
             - More memory usage
             """)

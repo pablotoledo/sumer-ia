@@ -34,13 +34,62 @@ A professional-grade Streamlit application for audio transcription using Whisper
 ## 🛠 Installation
 
 ### Prerequisites
+
+#### System Dependencies
 ```bash
 # Install system dependencies (Ubuntu/Debian)
-sudo apt update && sudo apt install ffmpeg libcudnn8 libcudnn8-dev -y
+sudo apt update && sudo apt install ffmpeg -y
 
 # For macOS
 brew install ffmpeg
 ```
+
+#### NVIDIA CUDA and cuDNN Setup (Required for GPU acceleration)
+
+**Note**: GPU acceleration significantly improves processing speed (5-10x faster than CPU).
+
+1. **Install NVIDIA GPU drivers**:
+```bash
+# Check if drivers are installed
+nvidia-smi
+
+# If not installed, install NVIDIA drivers
+sudo apt install nvidia-driver-535 -y
+sudo reboot
+```
+
+2. **Add NVIDIA CUDA repository**:
+```bash
+# Download and install CUDA keyring
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb
+sudo dpkg -i cuda-keyring_1.0-1_all.deb
+sudo apt update
+```
+
+3. **Install CUDA and cuDNN**:
+```bash
+# Install CUDA toolkit
+sudo apt install cuda-toolkit-11-8 -y
+
+# Install cuDNN libraries
+sudo apt install libcudnn8 libcudnn8-dev -y
+```
+
+4. **Verify installation**:
+```bash
+# Check CUDA version
+nvcc --version
+nvidia-smi
+
+# Test PyTorch CUDA availability (after installation)
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+```
+
+**Alternative: CPU-only setup**
+If you prefer to use CPU-only processing (no GPU requirements):
+- No CUDA/cuDNN installation needed
+- Processing will be slower but fully functional
+- The application will automatically detect and use CPU mode
 
 ### Using uv Package Manager (Recommended)
 ```bash

@@ -199,7 +199,7 @@ class WhisperXProcessor:
             self.logger.info("Loading diarization model")
             self.memory_monitor.log_memory_status("before_diarization_model_load")
             
-            self.diarization_model = whisperx.DiarizationPipeline(
+            self.diarization_model = whisperx.diarize.DiarizationPipeline(
                 use_auth_token=hf_token,
                 device=self.hardware_config.device
             )
@@ -438,7 +438,7 @@ class WhisperXProcessor:
             )
             
             # Assign speakers to words
-            result = whisperx.assign_word_speakers(diarization_segments, result)
+            result = whisperx.diarize.assign_word_speakers(diarization_segments, result)
             
             self.logger.info("Diarization completed")
             if progress_callback:
