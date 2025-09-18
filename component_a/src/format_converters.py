@@ -171,104 +171,311 @@ class TranscriptionFormatConverter:
         
         return '\n'.join(txt_content)
     
-    def to_csv(self, result: Dict[str, Any]) -> str:
-        """Convert result to CSV format.
-        
-        Args:
-            result: WhisperX transcription result
-            
-        Returns:
-            CSV format string
-        """
-        csv_lines = []
-        
-        # Header
-        headers = ['start', 'end', 'duration', 'text']
-        if self.include_speaker_labels:
-            headers.insert(-1, 'speaker')
-        csv_lines.append(','.join(headers))
-        
-        # Data rows
-        for segment in result.get('segments', []):
-            start = segment.get('start', 0.0)
-            end = segment.get('end', 0.0)
-            duration = end - start
-            text = segment.get('text', '').strip().replace('"', '""')  # Escape quotes
-            
-            row = [
-                f"{start:.3f}",
-                f"{end:.3f}",
-                f"{duration:.3f}",
-                f'"{text}"'
-            ]
-            
-            if self.include_speaker_labels:
-                speaker = segment.get('speaker', 'UNKNOWN')
-                row.insert(-1, speaker)
-            
-            csv_lines.append(','.join(row))
-        
-        return '\n'.join(csv_lines)
     
-    def to_word_level_json(self, result: Dict[str, Any]) -> str:
-        """Convert result to word-level JSON format.
+    
+    def to_markdown_complete(self, result: Dict[str, Any]) -> str:
+        """Convert result to complete structured markdown format.
         
         Args:
             result: WhisperX transcription result
             
         Returns:
-            Word-level JSON string
+            Complete markdown with headers, segments, and questions
         """
-        words_list = []
+        import re
+        from datetime import datetime
         
-        for segment in result.get('segments', []):
-            if 'words' in segment:
-                for word in segment['words']:
-                    word_data = {
-                        'word': word.get('word', ''),
-                        'start': word.get('start', 0.0),
-                        'end': word.get('end', 0.0),
-                        'duration': word.get('end', 0.0) - word.get('start', 0.0)
-                    }
-                    
-                    if self.include_confidence_scores and 'score' in word:
-                        word_data['confidence'] = round(word['score'], 3)
-                    
-                    if self.include_speaker_labels and 'speaker' in word:
-                        word_data['speaker'] = word['speaker']
-                    
-                    words_list.append(word_data)
+        # Header information
+        segments = result.get('segments', [])
+        total_duration = segments[-1].get('end', 0) if segments else 0
+        detected_language = result.get('language', 'unknown')
+        
+        # Get unique speakers
+        speakers = set()
+        for segment in segments:
+            if self.include_speaker_labels and 'speaker' in segment:
+                speakers.add(segment['speaker'])
+        
+        # Format duration
+        hours = int(total_duration // 3600)
+        minutes = int((total_duration % 3600) // 60)
+        seconds = int(total_duration % 60)
+        duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        # Start building markdown
+        md_content = f"""# Análisis de Transcripción
+
+## Información General
+- **Fecha de análisis**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+- **Duración total**: {duration_str}
+- **Idioma detectado**: {detected_language.upper()}
+- **Número de segmentos**: {len(segments)}"""
+
+        if speakers:
+            md_content += f"\n- **Speakers identificados**: {', '.join(sorted(speakers))}"
+        
+        md_content += "\n\n## Transcripción por Segmentos\n"
+        
+        # Process each segment
+        all_questions = []
+        
+        for i, segment in enumerate(segments, 1):
+            start_time = segment.get('start', 0)
+            end_time = segment.get('end', 0)
+            text = segment.get('text', '').strip()
+            
+            # Format timestamp
+            start_min = int(start_time // 60)
+            start_sec = int(start_time % 60)
+            end_min = int(end_time // 60)
+            end_sec = int(end_time % 60)
+            timestamp = f"{start_min:02d}:{start_sec:02d} - {end_min:02d}:{end_sec:02d}"
+            
+            # Add segment header
+            md_content += f"\n### Segmento {i} ({timestamp})\n"
+            
+            # Add speaker if available
+            if self.include_speaker_labels and 'speaker' in segment:
+                speaker = segment['speaker']
+                md_content += f"**{speaker}**: {text}\n"
             else:
-                # If no word-level data, create from segment
-                segment_words = segment.get('text', '').split()
-                segment_start = segment.get('start', 0.0)
-                segment_end = segment.get('end', 0.0)
-                segment_duration = segment_end - segment_start
-                word_duration = segment_duration / len(segment_words) if segment_words else 0
+                md_content += f"{text}\n"
+            
+            # Extract questions from this segment
+            segment_questions = self._extract_questions_from_text(text)
+            if segment_questions:
+                md_content += f"\n#### Preguntas identificadas:\n"
+                for question in segment_questions:
+                    md_content += f"- {question}\n"
+                    all_questions.append({
+                        'question': question,
+                        'timestamp': timestamp,
+                        'speaker': segment.get('speaker', 'Unknown') if self.include_speaker_labels else None,
+                        'segment': i
+                    })
+        
+        # Add questions summary if any found
+        if all_questions:
+            md_content += "\n\n## Resumen de Preguntas\n"
+            
+            # By speaker if available
+            if self.include_speaker_labels and speakers:
+                md_content += "\n### Por Speaker\n"
+                for speaker in sorted(speakers):
+                    speaker_questions = [q for q in all_questions if q['speaker'] == speaker]
+                    if speaker_questions:
+                        md_content += f"\n#### {speaker}\n"
+                        for q in speaker_questions:
+                            md_content += f"- {q['question']}\n"
+            
+            # Chronologically
+            md_content += "\n### Cronológicamente\n"
+            for i, q in enumerate(all_questions, 1):
+                md_content += f"{i}. [{q['timestamp']}] {q['question']}\n"
+        
+        return md_content
+    
+    def _extract_questions_from_text(self, text: str) -> List[str]:
+        """Extract questions from text using pattern matching.
+        
+        Args:
+            text: Text to analyze
+            
+        Returns:
+            List of detected questions
+        """
+        import re
+        
+        questions = []
+        
+        # Question patterns for multiple languages
+        patterns = [
+            r'¿[^?]*\?',                    # Spanish: ¿...?
+            r'\b[A-Z][^.!?]*\?',           # English: Capital start + ?
+            r'\b(?:What|How|Why|When|Where|Who|Which|Could|Would|Should|Can|Will|Do|Does|Did|Is|Are|Was|Were)\b[^.!]*\?',
+            r'\b(?:Qué|Cómo|Por qué|Cuándo|Dónde|Quién|Cuál|Podría|Debería|Puedes|Puedo)\b[^?]*\?'
+        ]
+        
+        # Search with each pattern
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+            questions.extend(matches)
+        
+        # Filter and clean questions
+        filtered_questions = []
+        for q in questions:
+            q = q.strip()
+            # Quality filters
+            if 5 <= len(q) <= 200 and q not in filtered_questions:
+                filtered_questions.append(q)
+        
+        return filtered_questions
+    
+    def to_markdown_segments_only(self, result: Dict[str, Any]) -> str:
+        """Convert result to clean segments markdown (no questions, no numbering).
+        
+        Args:
+            result: WhisperX transcription result
+            
+        Returns:
+            Clean segments markdown
+        """
+        segments = result.get('segments', [])
+        
+        md_content = "# Contenido Limpio\n"
+        md_content += "*Solo el contenido hablado sin metadatos ni preguntas*\n\n"
+        
+        for segment in segments:
+            text = segment.get('text', '').strip()
+            
+            # Remove questions from text
+            clean_text = text
+            questions = self._extract_questions_from_text(text)
+            for question in questions:
+                clean_text = clean_text.replace(question, '').strip()
+            
+            # Clean up extra spaces and punctuation
+            clean_text = ' '.join(clean_text.split())
+            
+            if clean_text:
+                if self.include_speaker_labels and 'speaker' in segment:
+                    speaker = segment['speaker']
+                    md_content += f"**{speaker}**: {clean_text}\n\n"
+                else:
+                    md_content += f"{clean_text}\n\n"
+        
+        return md_content
+    
+    def to_markdown_questions_only(self, result: Dict[str, Any]) -> str:
+        """Convert result to questions-only markdown.
+        
+        Args:
+            result: WhisperX transcription result
+            
+        Returns:
+            Questions-only markdown
+        """
+        segments = result.get('segments', [])
+        all_questions = []
+        
+        # Extract all questions
+        for i, segment in enumerate(segments, 1):
+            text = segment.get('text', '').strip()
+            questions = self._extract_questions_from_text(text)
+            
+            for question in questions:
+                start_time = segment.get('start', 0)
+                start_min = int(start_time // 60)
+                start_sec = int(start_time % 60)
+                timestamp = f"{start_min:02d}:{start_sec:02d}"
                 
-                for i, word_text in enumerate(segment_words):
-                    word_start = segment_start + (i * word_duration)
-                    word_end = word_start + word_duration
-                    
-                    word_data = {
-                        'word': word_text,
-                        'start': word_start,
-                        'end': word_end,
-                        'duration': word_duration
-                    }
-                    
-                    if self.include_speaker_labels and 'speaker' in segment:
-                        word_data['speaker'] = segment['speaker']
-                    
-                    words_list.append(word_data)
+                all_questions.append({
+                    'question': question,
+                    'timestamp': timestamp,
+                    'speaker': segment.get('speaker', 'Unknown') if self.include_speaker_labels else None,
+                    'segment': i
+                })
         
-        output = {
-            'language': result.get('language', 'unknown'),
-            'words': words_list,
-            'total_words': len(words_list)
-        }
+        md_content = "# Preguntas Identificadas\n"
+        md_content += "*Todas las preguntas detectadas en la conversación*\n\n"
         
-        return json.dumps(output, indent=2, ensure_ascii=False)
+        if not all_questions:
+            md_content += "No se detectaron preguntas en la transcripción.\n"
+            return md_content
+        
+        # Group by speaker if available
+        if self.include_speaker_labels:
+            speakers = set(q['speaker'] for q in all_questions if q['speaker'])
+            if speakers:
+                md_content += "## Por Speaker\n\n"
+                for speaker in sorted(speakers):
+                    speaker_questions = [q for q in all_questions if q['speaker'] == speaker]
+                    if speaker_questions:
+                        md_content += f"### {speaker}\n\n"
+                        for q in speaker_questions:
+                            md_content += f"- [{q['timestamp']}] {q['question']}\n"
+                        md_content += "\n"
+        
+        # Chronological list
+        md_content += "## Lista Cronológica\n\n"
+        for i, q in enumerate(all_questions, 1):
+            if self.include_speaker_labels and q['speaker']:
+                md_content += f"{i}. **[{q['timestamp']} - {q['speaker']}]** {q['question']}\n"
+            else:
+                md_content += f"{i}. **[{q['timestamp']}]** {q['question']}\n"
+        
+        return md_content
+    
+    def to_markdown_sequential(self, result: Dict[str, Any]) -> str:
+        """Convert result to sequential format (segments first, then questions by sections).
+        
+        Args:
+            result: WhisperX transcription result
+            
+        Returns:
+            Sequential breakdown markdown
+        """
+        segments = result.get('segments', [])
+        
+        md_content = "# Análisis Secuencial\n"
+        md_content += "*Contenido organizado secuencialmente + preguntas por secciones*\n\n"
+        
+        # Part 1: Sequential content
+        md_content += "## Parte 1: Contenido Secuencial\n\n"
+        
+        for i, segment in enumerate(segments, 1):
+            start_time = segment.get('start', 0)
+            end_time = segment.get('end', 0)
+            text = segment.get('text', '').strip()
+            
+            start_min = int(start_time // 60)
+            start_sec = int(start_time % 60)
+            end_min = int(end_time // 60) 
+            end_sec = int(end_time % 60)
+            timestamp = f"{start_min:02d}:{start_sec:02d} - {end_min:02d}:{end_sec:02d}"
+            
+            if self.include_speaker_labels and 'speaker' in segment:
+                speaker = segment['speaker']
+                md_content += f"**[{timestamp}] {speaker}**: {text}\n\n"
+            else:
+                md_content += f"**[{timestamp}]**: {text}\n\n"
+        
+        # Part 2: Questions by sections
+        md_content += "## Parte 2: Preguntas por Secciones\n\n"
+        
+        # Divide into sections (every 5 segments or by time)
+        section_size = 5
+        sections = [segments[i:i + section_size] for i in range(0, len(segments), section_size)]
+        
+        for section_num, section_segments in enumerate(sections, 1):
+            if not section_segments:
+                continue
+                
+            first_start = section_segments[0].get('start', 0)
+            last_end = section_segments[-1].get('end', 0)
+            
+            first_min = int(first_start // 60)
+            first_sec = int(first_start % 60)
+            last_min = int(last_end // 60)
+            last_sec = int(last_end % 60)
+            
+            md_content += f"### Sección {section_num} ({first_min:02d}:{first_sec:02d} - {last_min:02d}:{last_sec:02d})\n\n"
+            
+            section_questions = []
+            for segment in section_segments:
+                text = segment.get('text', '').strip()
+                questions = self._extract_questions_from_text(text)
+                section_questions.extend(questions)
+            
+            if section_questions:
+                for q in section_questions:
+                    md_content += f"- {q}\n"
+            else:
+                md_content += "*No se detectaron preguntas en esta sección.*\n"
+            
+            md_content += "\n"
+        
+        return md_content
     
     def _format_timestamp_srt(self, seconds: float) -> str:
         """Format timestamp for SRT format (HH:MM:SS,mmm).

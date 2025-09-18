@@ -20,6 +20,11 @@ dependencies = [
     "Pillow>=10.0.0",
     "tiktoken>=0.5.0",
     "pyyaml>=6.0",
+    # Streamlit dependencies
+    "streamlit>=1.28.0",
+    "plotly>=5.17.0",
+    "pandas>=2.0.0",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +35,16 @@ dev = [
     "isort>=5.12.0",
     "mypy>=1.5.0"
 ]
+streamlit = [
+    "streamlit-option-menu>=0.3.6",
+    "streamlit-ace>=0.1.1",
+    "streamlit-authenticator>=0.2.3",
+    "structlog>=23.0.0"
+]
+
+[project.scripts]
+fastagent-ui = "src.streamlit_interface.cli:main"
+fastagent-streamlit = "src.streamlit_interface.cli:main"
 
 [build-system]
 requires = ["hatchling"]

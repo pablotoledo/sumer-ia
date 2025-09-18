@@ -187,18 +187,35 @@ def create_download_package(result: Dict[str, Any], formats: list, converter: Tr
             txt_content = converter.to_txt(result)
             zip_file.writestr("transcription.txt", txt_content.encode('utf-8'))
         
-        if "CSV" in formats:
-            csv_content = converter.to_csv(result)
-            zip_file.writestr("transcription.csv", csv_content.encode('utf-8'))
-        
-        if "Word-level JSON" in formats:
-            word_json = converter.to_word_level_json(result)
-            zip_file.writestr("word_level.json", word_json.encode('utf-8'))
-        
         # Add summary
         summary = TranscriptionSummary(result)
         summary_content = json.dumps(summary.get_full_summary(), indent=2, ensure_ascii=False)
         zip_file.writestr("summary.json", summary_content.encode('utf-8'))
+    
+    zip_buffer.seek(0)
+    return zip_buffer.read()
+
+
+def create_markdown_analysis_package(result: Dict[str, Any], converter: TranscriptionFormatConverter) -> bytes:
+    """Create ZIP package with 4 markdown analysis documents."""
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # 1. Complete analysis markdown
+        complete_md = converter.to_markdown_complete(result)
+        zip_file.writestr("complete_analysis.md", complete_md.encode('utf-8'))
+        
+        # 2. Clean segments only
+        segments_md = converter.to_markdown_segments_only(result)
+        zip_file.writestr("clean_segments.md", segments_md.encode('utf-8'))
+        
+        # 3. Questions only
+        questions_md = converter.to_markdown_questions_only(result)
+        zip_file.writestr("extracted_questions.md", questions_md.encode('utf-8'))
+        
+        # 4. Sequential breakdown
+        sequential_md = converter.to_markdown_sequential(result)
+        zip_file.writestr("sequential_breakdown.md", sequential_md.encode('utf-8'))
     
     zip_buffer.seek(0)
     return zip_buffer.read()
@@ -582,7 +599,7 @@ def main():
         
         output_formats = st.sidebar.multiselect(
             "Output Formats",
-            ["JSON", "SRT", "VTT", "TXT", "CSV", "Word-level JSON"],
+            ["JSON", "SRT", "VTT", "TXT"],
             default=["JSON", "SRT"],
             help="Select desired output formats"
         )
@@ -773,14 +790,36 @@ def main():
                 converter
             )
             
-            # Download button
-            st.download_button(
-                label="📦 Download Results (ZIP)",
-                data=download_data,
-                file_name=f"transcription_{uploaded_file.name if uploaded_file else 'result'}.zip",
-                mime="application/zip",
-                type="primary"
-            )
+            # Download buttons
+            st.subheader("📦 Download Options")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.download_button(
+                    label="📦 Complete Results",
+                    data=download_data,
+                    file_name=f"transcription_{uploaded_file.name if uploaded_file else 'result'}.zip",
+                    mime="application/zip",
+                    type="primary",
+                    help="All selected formats + summary"
+                )
+            
+            with col2:
+                # Generate markdown analysis package
+                analysis_data = create_markdown_analysis_package(
+                    st.session_state.transcription_result, 
+                    converter
+                )
+                
+                st.download_button(
+                    label="📝 Analysis Pack",
+                    data=analysis_data,
+                    file_name="analysis_pack.zip",
+                    mime="application/zip", 
+                    type="secondary",
+                    help="4 markdown documents: complete, segments, questions, sequential"
+                )
             
             # Individual format downloads
             st.subheader("📄 Individual Downloads")
@@ -803,12 +842,6 @@ def main():
                     elif format_name == "TXT":
                         content = converter.to_txt(st.session_state.transcription_result)
                         filename = f"transcription.txt"
-                    elif format_name == "CSV":
-                        content = converter.to_csv(st.session_state.transcription_result)
-                        filename = f"transcription.csv"
-                    elif format_name == "Word-level JSON":
-                        content = converter.to_word_level_json(st.session_state.transcription_result)
-                        filename = f"word_level.json"
                     
                     st.download_button(
                         label=f"📄 {format_name}",

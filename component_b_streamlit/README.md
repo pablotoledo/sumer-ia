@@ -8,12 +8,13 @@ Este sistema implementa una arquitectura distribuida multi-agente que transforma
 
 ### ✨ Características Principales
 
-- 🤖 **6 agentes especializados** trabajando en pipeline secuencial
+- 🤖 **6 agentes especializados** trabajando in pipeline secuencial
 - 🔄 **Arquitectura LLM-agnóstica** usando fast-agent framework
 - 📊 **Segmentación inteligente** basada en contenido semántico
 - ❓ **Q&A automático** con referencias cruzadas y contexto multimodal
 - 🖼️ **Soporte multimodal** para PDFs, imágenes y documentos
 - 📈 **Escalabilidad** de 200 a 22,000+ palabras sin cambios de código
+- 🖥️ **Interfaz Web Streamlit** para uso intuitivo y gestión visual
 
 ---
 
@@ -438,13 +439,47 @@ uv sync
 # 2. Configurar fast-agent (ya incluido)
 # fastagent.config.yaml está preconfigurado con Azure OpenAI
 
-# 3. Verificar archivos de ejemplo
+# 3. Instalar dependencias opcionales de Streamlit (si deseas usar la interfaz web)
+uv sync --extra streamlit
+
+# 4. Verificar archivos de ejemplo
 ls examples/
 # speech-to-text.txt (22,269 palabras)
 # Ejercicio comparación compañías.pdf
 ```
 
-### **Comandos de Uso**
+### **🖥️ Interfaz Web Streamlit (Recomendado para Usuarios)**
+
+Para una experiencia más intuitiva, puedes usar la interfaz web de Streamlit:
+
+#### **🚀 Inicio Rápido**
+```bash
+# Ejecutar la interfaz web
+fastagent-ui
+
+# O alternativamente
+uv run python -m src.streamlit_interface.app
+
+# O usando streamlit directamente
+uv run streamlit run src/streamlit_interface/app.py
+```
+
+#### **✨ Características de la Interfaz Web**
+- **📊 Dashboard**: Métricas de uso y estado del sistema
+- **⚙️ Configuración Visual**: Gestión de proveedores LLM (Azure OpenAI, Ollama, etc.)
+- **📝 Procesamiento Interactivo**: Upload de archivos, procesamiento en tiempo real
+- **📥 Descarga de Resultados**: Exportación en múltiples formatos
+
+#### **🎯 Flujo de Uso Web**
+1. **Abrir** http://localhost:8501 en tu navegador
+2. **Configurar** al menos un proveedor LLM en la página de Configuración
+3. **Subir** tu transcripción STT en la página de Procesamiento
+4. **Procesar** con visualización de progreso en tiempo real
+5. **Descargar** los resultados en formato TXT o MD
+
+---
+
+### **🖥️ Comandos de Línea (Avanzado)**
 
 #### **🎯 Procesamiento Completo (Recomendado)**
 ```bash
