@@ -1,0 +1,96 @@
+# =============================================================================
+# Video Frame Capture - Build Configuration
+# =============================================================================
+# Este archivo permite personalizar el proceso de build
+# Edita estos valores según tus necesidades
+
+# Información de la aplicación
+app:
+  name: "VideoFrameCapture"
+  display_name: "Video Frame Capture"
+  version: "1.0.0"
+  description: "Professional desktop application for video frame capture and export"
+  author: "Your Name"
+  url: "https://github.com/your-repo/video-frame-capture"
+  bundle_id: "com.videocapture.app"
+
+# Configuración de build
+build:
+  # Directorio de salida para los builds
+  output_dir: "dist"
+
+  # Incluir console en debug mode
+  debug_console: true
+
+  # Comprimir con UPX (reduce tamaño del ejecutable)
+  use_upx: true
+
+  # Crear app bundle en macOS
+  create_app_bundle: true
+
+  # Incluir archivos adicionales
+  include_data:
+    - source: "README.md"
+      dest: "."
+    - source: "LICENSE"
+      dest: "."
+    # - source: "assets/"
+    #   dest: "assets/"
+
+# Iconos por plataforma (opcional)
+icons:
+  macos: "assets/icon.icns"
+  windows: "assets/icon.ico"
+  linux: "assets/icon.png"
+
+# Módulos Python a incluir forzadamente
+hidden_imports:
+  - "PySide6.QtCore"
+  - "PySide6.QtGui"
+  - "PySide6.QtWidgets"
+  - "PySide6.QtMultimedia"
+  - "PySide6.QtMultimediaWidgets"
+  - "cv2"
+  - "numpy"
+
+# Módulos a excluir (reduce tamaño)
+excludes:
+  - "tkinter"
+  - "matplotlib"
+  - "scipy"
+  - "pandas"
+  - "jupyter"
+  - "notebook"
+  - "IPython"
+  - "zmq"
+  - "tornado"
+
+# Configuración específica por plataforma
+platforms:
+  macos:
+    # Configuración específica para macOS
+    minimum_version: "10.14"
+    architecture: "universal2"  # Para M1 y Intel
+    sign_bundle: false
+
+  windows:
+    # Configuración específica para Windows
+    minimum_version: "10"
+    architecture: "x64"
+    create_installer: false
+
+  linux:
+    # Configuración específica para Linux
+    create_appimage: false
+    create_deb: false
+
+# Metadatos adicionales
+metadata:
+  copyright: "© 2024 Your Name. All rights reserved."
+  license: "MIT"
+  keywords:
+    - "video"
+    - "frame"
+    - "capture"
+    - "export"
+    - "multimedia"

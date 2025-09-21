@@ -2,7 +2,42 @@
 
 **Sistema LLM-agnóstico de procesamiento distribuido de transcripciones con generación automática de preguntas y respuestas educativas**
 
-## 🎯 Visión General
+## 🌟 **Interfaz Streamlit Consolidada Disponible**
+
+### 🎉 Nueva Experiencia Unificada
+
+El sistema ahora incluye una **interfaz web Streamlit completamente consolidada** que integra todas las funcionalidades en una experiencia unificada.
+
+#### 🚀 **Inicio Rápido con la Interfaz Web**
+
+```bash
+# Instalar dependencias de Streamlit
+poetry install --with streamlit
+
+# Ejecutar la interfaz consolidada
+poetry run fastagent-ui
+# O alternativamente
+poetry run streamlit run src/streamlit_interface/app.py
+```
+
+#### ✨ **Características de la Interfaz Consolidada**
+
+- 🏠 **Página Principal**: Vista general y acceso rápido
+- 📊 **Dashboard**: Métricas interactivas, estado del sistema y actividad reciente
+- ⚙️ **Configuración**: Gestión visual de proveedores LLM (Azure, Ollama, OpenAI, Anthropic)
+- 📝 **Procesamiento**: Upload de archivos, procesamiento en tiempo real con progreso visual
+- 🤖 **Gestión de Agentes**: Editor de prompts, testing y configuración avanzada
+
+#### 🎯 **Flujo de Uso Web Recomendado**
+1. **Abrir** http://localhost:8501 en tu navegador
+2. **Configurar** al menos un proveedor LLM en la página de Configuración
+3. **Subir** tu transcripción STT en la página de Procesamiento
+4. **Procesar** con visualización de progreso en tiempo real
+5. **Descargar** los resultados en formato TXT o MD
+
+---
+
+## 🎯 Visión General del Sistema
 
 Este sistema implementa una arquitectura distribuida multi-agente que transforma transcripciones STT (Speech-to-Text) en documentos educativos profesionales, incluyendo generación automática de Q&A con referencias contextuales y soporte multimodal.
 

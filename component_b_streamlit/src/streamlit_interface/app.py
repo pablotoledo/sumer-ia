@@ -99,20 +99,24 @@ def main():
     
     # Botones de navegación rápida
     st.markdown("### 🚀 Acciones Rápidas")
-    
-    col1, col2, col3 = st.columns(3)
-    
+
+    col1, col2, col3, col4 = st.columns(4)
+
     with col1:
         if st.button("📝 Ir a Procesamiento", type="primary", use_container_width=True):
-            st.switch_page("pages/1_📝_Procesamiento.py")
-    
+            st.switch_page("pages/3_📝_Procesamiento.py")
+
     with col2:
         if st.button("⚙️ Configurar Sistema", use_container_width=True):
             st.switch_page("pages/2_⚙️_Configuración.py")
-    
+
     with col3:
-        if st.button("🔄 Recargar Página", use_container_width=True):
-            st.rerun()
+        if st.button("📊 Ver Dashboard", use_container_width=True):
+            st.switch_page("pages/1_📊_Dashboard.py")
+
+    with col4:
+        if st.button("🤖 Gestionar Agentes", use_container_width=True):
+            st.switch_page("pages/4_🤖_Agentes.py")
 
 def run_streamlit():
     """Ejecuta la aplicación Streamlit programáticamente."""

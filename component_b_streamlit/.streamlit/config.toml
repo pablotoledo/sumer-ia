@@ -1,0 +1,52 @@
+[global]
+# Modo de desarrollo: false para producción
+developmentMode = false
+
+# Mostrar alertas de warning menos verbosas
+showWarningOnDirectExecution = false
+
+[server]
+# Puerto por defecto
+port = 8501
+
+# Dirección IP - 0.0.0.0 permite acceso desde cualquier IP
+address = "0.0.0.0"
+
+# Configuración de CORS para permitir iframe embedding (opcional)
+enableCORS = false
+enableXsrfProtection = true
+
+# Tamaño máximo de upload en MB
+maxUploadSize = 200
+
+# Habilitar WebSocket compression
+enableWebsocketCompression = false
+
+[browser]
+# No abrir automáticamente el navegador en desarrollo
+gatherUsageStats = false
+
+# Color del tema
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+
+[theme]
+# Tema base: "light" o "dark"
+base = "light"
+
+# Colores personalizados
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f8f9fa"
+textColor = "#262730"
+
+# Fuente: "sans serif", "serif", o "monospace"
+font = "sans serif"
+
+[client]
+# Configuración de conexión del cliente
+caching = true
+displayEnabled = true
+showErrorDetails = true

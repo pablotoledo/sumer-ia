@@ -1,0 +1,1 @@
+"""Data models for application state management."""
