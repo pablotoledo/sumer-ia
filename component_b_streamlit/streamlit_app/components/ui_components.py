@@ -12,8 +12,8 @@ import time
 def setup_page_config():
     """Configura la página de Streamlit."""
     st.set_page_config(
-        page_title="FastAgent Interface",
-        page_icon="🤖",
+        page_title="📊 Dashboard - FastAgent",
+        page_icon="📊",
         layout="wide",
         initial_sidebar_state="expanded",
         menu_items={

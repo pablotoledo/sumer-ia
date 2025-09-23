@@ -325,31 +325,24 @@ Segmento {i + 1} de {total_segments}:
 
 # Helper functions para Streamlit
 def run_async_in_streamlit(coroutine):
-    """Ejecuta una coroutine asíncrona en Streamlit."""
-    try:
-        # Intentar obtener el loop existente
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Si el loop está corriendo, crear una tarea
-            import concurrent.futures
-            import threading
-            
-            def run_in_thread():
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    return new_loop.run_until_complete(coroutine)
-                finally:
-                    new_loop.close()
-            
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(run_in_thread)
-                return future.result()
-        else:
-            return loop.run_until_complete(coroutine)
-    except RuntimeError:
-        # No hay loop, crear uno nuevo
-        return asyncio.run(coroutine)
+    """Ejecuta una coroutine asíncrona en Streamlit de forma simple."""
+    import concurrent.futures
+    import threading
+
+    def run_in_thread():
+        # Crear un nuevo event loop para este hilo
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        try:
+            return new_loop.run_until_complete(coroutine)
+        finally:
+            new_loop.close()
+            asyncio.set_event_loop(None)
+
+    # Siempre ejecutar en un hilo separado para evitar conflictos
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(run_in_thread)
+        return future.result()
 
 def create_progress_callback():
     """Crea un callback de progreso para Streamlit."""

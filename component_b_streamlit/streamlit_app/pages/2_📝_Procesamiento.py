@@ -11,19 +11,26 @@ import sys
 from pathlib import Path
 import tempfile
 import os
+from datetime import datetime
 
 # Añadir el directorio padre al path
-parent_dir = Path(__file__).parent.parent.parent
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.append(str(parent_dir.parent))
 sys.path.append(str(parent_dir))
 
-from streamlit_app.components.config_manager import ConfigManager
-from streamlit_app.components.ui_components import (
+from components.config_manager import ConfigManager
+from components.ui_components import (
     setup_page_config, show_sidebar, show_config_status,
     show_file_uploader, show_download_button, show_error_message,
     show_expandable_content, show_metrics_cards
 )
-from streamlit_app.components.agent_interface import (
+from components.agent_interface import (
     AgentInterface, run_async_in_streamlit, create_progress_callback
+)
+from utils.file_handlers import (
+    create_complete_zip_package, remove_segment_numbers,
+    extract_qa_section_clean
 )
 
 def main():
@@ -261,14 +268,19 @@ def show_processing_tab(agent_interface):
 
 def process_content(agent_interface):
     """Ejecuta el procesamiento del contenido."""
-    
+
+    st.info("🔄 Iniciando procesamiento...")
+
     content = st.session_state.input_content
     selected_agent = st.session_state.get('selected_agent')
-    
+
+    st.info(f"📝 Contenido: {len(content)} caracteres")
+    st.info(f"🤖 Agente seleccionado: {selected_agent}")
+
     # Preparar archivos adicionales
     document_paths = []
     temp_files = []
-    
+
     if 'additional_files' in st.session_state and st.session_state.additional_files:
         for file in st.session_state.additional_files:
             # Guardar archivo temporal
@@ -277,10 +289,12 @@ def process_content(agent_interface):
             )
             document_paths.append(temp_path)
             temp_files.append(temp_path)
-    
-    # Crear callback de progreso
-    progress_callback = create_progress_callback()
-    
+
+    # NO usar progress_callback con threads (causa NoSessionContext)
+    progress_callback = None
+
+    st.info("⚡ Ejecutando procesamiento con FastAgent...")
+
     try:
         # Ejecutar procesamiento
         result = run_async_in_streamlit(
@@ -330,6 +344,13 @@ def process_content(agent_interface):
     
     except Exception as e:
         st.error("❌ Error inesperado durante el procesamiento")
+        st.error(f"**Error detallado**: {str(e)}")
+        st.code(f"Tipo de error: {type(e).__name__}")
+
+        # También mostrar el traceback
+        import traceback
+        st.code(traceback.format_exc())
+
         show_error_message(e, "procesamiento")
     
     finally:
@@ -397,34 +418,77 @@ def show_results_tab():
     
     # Opciones de descarga
     st.subheader("💾 Descargar Resultados")
-    
+
+    # Opción de descarga ZIP completa (destacada)
+    col_zip = st.columns([1])[0]
+    with col_zip:
+        if st.button("📦 Descargar Paquete Completo (ZIP)", type="primary", use_container_width=True):
+            with st.spinner("Preparando paquete ZIP..."):
+                try:
+                    zip_path = create_complete_zip_package(result)
+
+                    # Leer el archivo ZIP para descarga
+                    with open(zip_path, 'rb') as f:
+                        zip_data = f.read()
+
+                    # Limpiar archivo temporal
+                    os.unlink(zip_path)
+
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    st.download_button(
+                        label="📥 Descargar ZIP",
+                        data=zip_data,
+                        file_name=f"procesamiento_completo_{timestamp}.zip",
+                        mime="application/zip"
+                    )
+
+                    st.success("✅ Paquete ZIP preparado con 4 formatos:")
+                    st.info("""
+                    📄 **Contenido del ZIP:**
+                    - `documento_completo.md` - Formato markdown sin números de segmento
+                    - `documento_texto.txt` - Texto plano sin números de segmento
+                    - `documento_consolidado.md` - Contenido seguido + preguntas al final
+                    - `preguntas_respuestas.md` - Solo Q&A sin números de segmento
+                    """)
+
+                except Exception as e:
+                    st.error(f"Error preparando ZIP: {e}")
+
+    st.markdown("---")
+    st.subheader("📄 Descargas Individuales")
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
+        # Markdown sin números de segmento
+        markdown_clean = remove_segment_numbers(document)
         show_download_button(
-            document, 
-            "documento_procesado.md", 
-            "Descargar como Markdown"
+            markdown_clean,
+            "documento_procesado.md",
+            "Markdown"
         )
-    
+
     with col2:
-        # Versión sin markdown para .txt
-        plain_text = document.replace('#', '').replace('**', '').replace('*', '')
+        # Versión sin markdown para .txt (sin números de segmento)
+        markdown_clean = remove_segment_numbers(document)
+        plain_text = markdown_clean.replace('#', '').replace('**', '').replace('*', '')
         show_download_button(
-            plain_text, 
-            "documento_procesado.txt", 
-            "Descargar como TXT"
+            plain_text,
+            "documento_procesado.txt",
+            "Texto Plano"
         )
-    
+
     with col3:
-        # Solo la sección Q&A
-        qa_section = extract_qa_section(document)
+        # Solo la sección Q&A (sin números de segmento)
+        qa_section = extract_qa_section_clean(document)
         if qa_section:
             show_download_button(
-                qa_section, 
-                "preguntas_respuestas.md", 
+                qa_section,
+                "preguntas_respuestas.md",
                 "Solo Q&A"
             )
+        else:
+            st.info("No hay sección Q&A disponible")
     
     # Estadísticas detalladas
     with st.expander("📊 Estadísticas Detalladas"):
@@ -469,18 +533,7 @@ def show_segments_view(result):
 
 def extract_qa_section(document: str) -> str:
     """Extrae solo la sección de Q&A del documento."""
-    lines = document.split('\n')
-    qa_section = []
-    in_qa = False
-    
-    for line in lines:
-        if 'preguntas y respuestas' in line.lower() or 'q&a' in line.lower():
-            in_qa = True
-        
-        if in_qa:
-            qa_section.append(line)
-    
-    return '\n'.join(qa_section) if qa_section else ""
+    return extract_qa_section_clean(document)
 
 def show_detailed_stats(result):
     """Muestra estadísticas detalladas del procesamiento."""

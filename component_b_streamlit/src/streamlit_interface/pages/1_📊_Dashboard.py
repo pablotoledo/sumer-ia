@@ -9,11 +9,6 @@ Panel de control principal con métricas y estado del sistema.
 import streamlit as st
 import sys
 from pathlib import Path
-import json
-from datetime import datetime, timedelta
-import plotly.express as px
-import plotly.graph_objects as go
-import pandas as pd
 
 # Añadir el directorio padre al path
 parent_dir = Path(__file__).parent.parent.parent.parent
@@ -21,7 +16,7 @@ sys.path.append(str(parent_dir))
 
 from src.streamlit_interface.core.config_manager import ConfigManager
 from src.streamlit_interface.components.ui_components import (
-    setup_page_config, show_sidebar, show_config_status, show_metrics_cards
+    setup_page_config, show_sidebar, show_config_status
 )
 
 def main():
@@ -44,22 +39,11 @@ def main():
 
     st.markdown("---")
 
-    # Métricas de uso
-    col1, col2 = st.columns([2, 1])
+    # Información del sistema y acciones rápidas
+    col1, col2 = st.columns([1, 1])
 
     with col1:
-        show_usage_metrics()
-
-    with col2:
         show_system_info(config_manager)
-
-    st.markdown("---")
-
-    # Actividad reciente y configuración
-    col1, col2 = st.columns(2)
-
-    with col1:
-        show_recent_activity()
 
     with col2:
         show_quick_actions(config_manager)
@@ -114,56 +98,6 @@ def show_system_status(config_manager):
     default_model = config_manager.get_default_model()
     st.info(f"🎯 **Modelo por defecto**: `{default_model}`")
 
-def show_usage_metrics():
-    """Muestra métricas de uso del sistema."""
-
-    st.subheader("📈 Métricas de Uso")
-
-    # Simular datos de uso (en una implementación real, estos vendrían de una base de datos)
-    usage_data = get_mock_usage_data()
-
-    # Métricas principales
-    metrics = {
-        "Procesamientos Totales": {"value": usage_data['total_processes'], "delta": "+12"},
-        "Palabras Procesadas": {"value": f"{usage_data['total_words']:,}", "delta": "+2.5K"},
-        "Tiempo Promedio": {"value": f"{usage_data['avg_time']:.1f}min", "delta": "-0.3min"},
-        "Tasa de Éxito": {"value": f"{usage_data['success_rate']:.1f}%", "delta": "+1.2%"}
-    }
-
-    show_metrics_cards(metrics)
-
-    # Gráfico de procesamientos por día
-    if len(usage_data['daily_processes']) > 1:
-        st.subheader("📅 Actividad Diaria")
-
-        df = pd.DataFrame(usage_data['daily_processes'])
-
-        fig = px.line(
-            df, x='date', y='processes',
-            title='Procesamientos por Día',
-            labels={'processes': 'Procesamientos', 'date': 'Fecha'}
-        )
-
-        fig.update_layout(
-            xaxis_title="Fecha",
-            yaxis_title="Procesamientos",
-            showlegend=False
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    # Distribución por tipo de agente
-    st.subheader("🤖 Uso por Agente")
-
-    agent_data = usage_data['agent_usage']
-
-    fig = px.pie(
-        values=list(agent_data.values()),
-        names=list(agent_data.keys()),
-        title='Distribución de Uso por Agente'
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
 
 def show_system_info(config_manager):
     """Muestra información del sistema."""
@@ -206,27 +140,6 @@ def show_system_info(config_manager):
     else:
         st.info("No hay servidores MCP configurados")
 
-def show_recent_activity():
-    """Muestra actividad reciente."""
-
-    st.subheader("🕒 Actividad Reciente")
-
-    # Simular actividad reciente
-    recent_activities = get_mock_recent_activity()
-
-    for activity in recent_activities:
-        with st.container():
-            col1, col2 = st.columns([3, 1])
-
-            with col1:
-                icon = "✅" if activity['status'] == 'success' else "❌"
-                st.write(f"{icon} {activity['description']}")
-                st.caption(f"🤖 {activity['agent']} • 📝 {activity['words']} palabras")
-
-            with col2:
-                st.caption(activity['time'])
-
-            st.markdown("---")
 
 def show_quick_actions(config_manager):
     """Muestra acciones rápidas."""
@@ -276,63 +189,6 @@ def show_quick_actions(config_manager):
         5. **Revisa los logs** si encuentras errores 429
         """)
 
-def get_mock_usage_data():
-    """Genera datos simulados de uso."""
-
-    # En una implementación real, estos datos vendrían de una base de datos
-    return {
-        'total_processes': 47,
-        'total_words': 125000,
-        'avg_time': 3.2,
-        'success_rate': 94.7,
-        'daily_processes': [
-            {'date': (datetime.now() - timedelta(days=6)).strftime('%Y-%m-%d'), 'processes': 5},
-            {'date': (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'), 'processes': 8},
-            {'date': (datetime.now() - timedelta(days=4)).strftime('%Y-%m-%d'), 'processes': 12},
-            {'date': (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d'), 'processes': 6},
-            {'date': (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'), 'processes': 9},
-            {'date': (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'), 'processes': 4},
-            {'date': datetime.now().strftime('%Y-%m-%d'), 'processes': 3}
-        ],
-        'agent_usage': {
-            'simple_processor': 32,
-            'meeting_processor': 15
-        }
-    }
-
-def get_mock_recent_activity():
-    """Genera actividad reciente simulada."""
-
-    return [
-        {
-            'description': 'Procesamiento de transcripción de conferencia sobre inversiones',
-            'agent': 'simple_processor',
-            'words': 2450,
-            'status': 'success',
-            'time': '2 min atrás'
-        },
-        {
-            'description': 'Procesamiento de reunión técnica del equipo',
-            'agent': 'meeting_processor',
-            'words': 1800,
-            'status': 'success',
-            'time': '15 min atrás'
-        },
-        {
-            'description': 'Error de rate limiting en procesamiento largo',
-            'agent': 'simple_processor',
-            'words': 5200,
-            'status': 'error',
-            'time': '1 hora atrás'
-        },
-        {
-            'description': 'Procesamiento exitoso con documentos PDF adicionales',
-            'agent': 'simple_processor',
-            'words': 3100,
-            'status': 'success',
-            'time': '2 horas atrás'
-        }
-    ]
 
 if __name__ == "__main__":
     main()

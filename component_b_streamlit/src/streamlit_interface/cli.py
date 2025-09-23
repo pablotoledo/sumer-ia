@@ -17,8 +17,8 @@ def run_streamlit_app():
     print("🤖 FastAgent Streamlit Interface")
     print("=" * 40)
     
-    # Obtener la ruta del archivo app.py
-    app_file = Path(__file__).parent / "app.py"
+    # Obtener la ruta del archivo app.py (interfaz limpia)
+    app_file = Path(__file__).parent.parent.parent / "streamlit_app" / "streamlit_app.py"
     
     if not app_file.exists():
         print(f"❌ Error: No se encontró {app_file}")
@@ -48,7 +48,7 @@ def run_streamlit_app():
         print("\n🔧 Posibles soluciones:")
         print("   1. Verificar que Streamlit esté instalado: uv add streamlit")
         print("   2. Instalar dependencias extra: uv sync --extra streamlit")
-        print("   3. Ejecutar manualmente: uv run streamlit run src/streamlit_interface/app.py")
+        print("   3. Ejecutar manualmente: uv run streamlit run streamlit_app/streamlit_app.py")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error inesperado: {e}")

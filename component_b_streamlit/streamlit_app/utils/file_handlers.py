@@ -375,20 +375,20 @@ def create_backup_config(config_path: str) -> str:
 def count_lines_and_words(text: str) -> Dict[str, int]:
     """
     Cuenta líneas y palabras en un texto.
-    
+
     Args:
         text: Texto a analizar
-    
+
     Returns:
         Diccionario con estadísticas
     """
-    
+
     lines = text.split('\n')
     words = text.split()
-    
+
     # Estadísticas detalladas
     non_empty_lines = [line for line in lines if line.strip()]
-    
+
     return {
         'total_lines': len(lines),
         'non_empty_lines': len(non_empty_lines),
@@ -397,3 +397,189 @@ def count_lines_and_words(text: str) -> Dict[str, int]:
         'chars_no_spaces': len(text.replace(' ', '')),
         'average_words_per_line': len(words) / len(non_empty_lines) if non_empty_lines else 0
     }
+
+def remove_segment_numbers(text: str) -> str:
+    """
+    Remueve números de segmento del texto.
+
+    Args:
+        text: Texto con números de segmento
+
+    Returns:
+        Texto sin números de segmento
+    """
+    import re
+
+    # Remover títulos de segmento como "### Segmento 1", "## Segmento 2:", etc.
+    text = re.sub(r'#{1,6}\s*Segmento\s+\d+[:\s]*[^\n]*\n', '', text)
+
+    # Remover referencias a segmentos en enlaces como "[Segmento 1: título](#segmento-1)"
+    text = re.sub(r'\[Segmento\s+\d+:[^\]]*\]\([^\)]*\)\n?', '', text)
+
+    # Remover líneas que solo contengan "Segmento X" al inicio
+    text = re.sub(r'^Segmento\s+\d+\s*\n', '', text, flags=re.MULTILINE)
+
+    return text
+
+def create_consolidated_format(result: Dict) -> str:
+    """
+    Crea un formato consolidado: todos los segmentos + todas las preguntas al final.
+    Usa la misma lógica que el generador principal pero reorganiza el contenido.
+
+    Args:
+        result: Diccionario con resultado del procesamiento
+
+    Returns:
+        Documento en formato consolidado
+    """
+
+    doc_parts = []
+    qa_parts = []
+
+    # Header del documento
+    doc_parts.append("# Documento Procesado")
+    doc_parts.append(f"**Generado**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    doc_parts.append("")
+
+    # Procesar cada segmento
+    segments = result.get('segments', [])
+
+    # Sección de contenido - extraer usando la misma función que el documento principal
+    doc_parts.append("## Contenido")
+    doc_parts.append("")
+
+    for segment in segments:
+        if segment.get('error', False):
+            continue
+
+        # Obtener contenido procesado completo
+        full_content = segment['processed_content']
+
+        # Extraer Q&A usando la función helper existente
+        qa_content = _extract_qa_content_from_segment(full_content)
+
+        # Extraer solo contenido (todo excepto Q&A)
+        content_only = _extract_content_only_from_segment(full_content)
+
+        # Limpiar números de segmento del contenido
+        content_clean = remove_segment_numbers(content_only)
+
+        if content_clean.strip():
+            doc_parts.append(content_clean)
+            doc_parts.append("")
+
+        # Guardar Q&A para después
+        if qa_content.strip():
+            qa_clean = remove_segment_numbers(qa_content)
+            qa_parts.append(qa_clean)
+
+    # Sección de preguntas al final
+    if qa_parts:
+        doc_parts.append("---")
+        doc_parts.append("")
+        doc_parts.append("## Preguntas y Respuestas")
+        doc_parts.append("")
+
+        for qa_content in qa_parts:
+            if qa_content.strip():
+                doc_parts.append(qa_content)
+                doc_parts.append("")
+
+    # Footer
+    doc_parts.append("---")
+    doc_parts.append("*Documento generado por FastAgent*")
+
+    return '\n'.join(doc_parts)
+
+def _extract_qa_content_from_segment(content: str) -> str:
+    """Extrae solo la sección Q&A de un segmento."""
+    lines = content.split('\n')
+    qa_section = []
+    in_qa_section = False
+
+    for line in lines:
+        if any(keyword in line.lower() for keyword in ['pregunta', 'respuesta', '¿', '?', 'q&a', '#### pregunta']):
+            in_qa_section = True
+
+        if in_qa_section:
+            qa_section.append(line)
+
+    return '\n'.join(qa_section)
+
+def _extract_content_only_from_segment(content: str) -> str:
+    """Extrae solo el contenido (sin Q&A) de un segmento."""
+    lines = content.split('\n')
+    content_section = []
+
+    for line in lines:
+        # Parar cuando encontremos el inicio de Q&A
+        if any(keyword in line.lower() for keyword in ['pregunta', 'respuesta', '¿', '?', 'q&a', '#### pregunta']):
+            break
+        content_section.append(line)
+
+    return '\n'.join(content_section)
+
+def create_complete_zip_package(result: Dict) -> str:
+    """
+    Crea un paquete ZIP completo con todos los formatos.
+
+    Args:
+        result: Diccionario con resultado del procesamiento
+
+    Returns:
+        Ruta del archivo ZIP creado
+    """
+
+    document = result['document']
+
+    # 1. Markdown original (sin números de segmento)
+    markdown_clean = remove_segment_numbers(document)
+
+    # 2. Texto plano (sin números de segmento)
+    plain_text = markdown_clean.replace('#', '').replace('**', '').replace('*', '')
+
+    # 3. Solo Q&A (sin números de segmento)
+    qa_section = extract_qa_section_clean(document)
+
+    # 4. Formato consolidado (nuevo)
+    consolidated = create_consolidated_format(result)
+
+    # Crear lista de archivos para el ZIP
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    files = [
+        (markdown_clean, f"documento_completo_{timestamp}.md"),
+        (plain_text, f"documento_texto_{timestamp}.txt"),
+        (consolidated, f"documento_consolidado_{timestamp}.md")
+    ]
+
+    # Agregar Q&A solo si existe contenido
+    if qa_section and qa_section.strip():
+        files.append((qa_section, f"preguntas_respuestas_{timestamp}.md"))
+
+    # Crear ZIP
+    return create_download_package(files, f"procesamiento_completo_{timestamp}")
+
+def extract_qa_section_clean(document: str) -> str:
+    """
+    Extrae solo la sección de Q&A del documento, sin números de segmento.
+
+    Args:
+        document: Documento completo
+
+    Returns:
+        Sección Q&A limpia
+    """
+    lines = document.split('\n')
+    qa_section = []
+    in_qa = False
+
+    for line in lines:
+        if 'preguntas y respuestas' in line.lower() or 'q&a' in line.lower():
+            in_qa = True
+
+        if in_qa:
+            qa_section.append(line)
+
+    qa_text = '\n'.join(qa_section)
+    return remove_segment_numbers(qa_text)

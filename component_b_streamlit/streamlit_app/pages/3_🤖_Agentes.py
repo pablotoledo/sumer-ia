@@ -11,11 +11,13 @@ import sys
 from pathlib import Path
 
 # Añadir el directorio padre al path
-parent_dir = Path(__file__).parent.parent.parent
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.append(str(parent_dir.parent))
 sys.path.append(str(parent_dir))
 
-from streamlit_app.components.config_manager import ConfigManager
-from streamlit_app.components.ui_components import (
+from components.config_manager import ConfigManager
+from components.ui_components import (
     setup_page_config, show_sidebar, show_expandable_content
 )
 

@@ -2,6 +2,8 @@
 
 **Sistema LLM-agnóstico de procesamiento distribuido de transcripciones con generación automática de preguntas y respuestas educativas**
 
+> 📦 **Este proyecto usa [UV](https://docs.astral.sh/uv/)** - El gestor de paquetes Python más rápido y moderno. Asegúrate de tener UV instalado: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 ## 🌟 **Interfaz Streamlit Consolidada Disponible**
 
 ### 🎉 Nueva Experiencia Unificada
@@ -12,12 +14,12 @@ El sistema ahora incluye una **interfaz web Streamlit completamente consolidada*
 
 ```bash
 # Instalar dependencias de Streamlit
-poetry install --with streamlit
+uv sync
 
 # Ejecutar la interfaz consolidada
-poetry run fastagent-ui
-# O alternativamente
-poetry run streamlit run src/streamlit_interface/app.py
+uv run streamlit run streamlit_app/streamlit_app.py
+# O alternativamente la interfaz src
+uv run streamlit run src/streamlit_interface/app.py
 ```
 
 #### ✨ **Características de la Interfaz Consolidada**
@@ -489,13 +491,13 @@ Para una experiencia más intuitiva, puedes usar la interfaz web de Streamlit:
 
 #### **🚀 Inicio Rápido**
 ```bash
-# Ejecutar la interfaz web
-fastagent-ui
+# Instalar dependencias con UV
+uv sync
 
-# O alternativamente
-uv run python -m src.streamlit_interface.app
+# Ejecutar la interfaz web principal
+uv run streamlit run streamlit_app/streamlit_app.py
 
-# O usando streamlit directamente
+# O alternativamente la interfaz src
 uv run streamlit run src/streamlit_interface/app.py
 ```
 
