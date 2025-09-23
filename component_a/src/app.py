@@ -196,29 +196,6 @@ def create_download_package(result: Dict[str, Any], formats: list, converter: Tr
     return zip_buffer.read()
 
 
-def create_markdown_analysis_package(result: Dict[str, Any], converter: TranscriptionFormatConverter) -> bytes:
-    """Create ZIP package with 4 markdown analysis documents."""
-    zip_buffer = io.BytesIO()
-    
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # 1. Complete analysis markdown
-        complete_md = converter.to_markdown_complete(result)
-        zip_file.writestr("complete_analysis.md", complete_md.encode('utf-8'))
-        
-        # 2. Clean segments only
-        segments_md = converter.to_markdown_segments_only(result)
-        zip_file.writestr("clean_segments.md", segments_md.encode('utf-8'))
-        
-        # 3. Questions only
-        questions_md = converter.to_markdown_questions_only(result)
-        zip_file.writestr("extracted_questions.md", questions_md.encode('utf-8'))
-        
-        # 4. Sequential breakdown
-        sequential_md = converter.to_markdown_sequential(result)
-        zip_file.writestr("sequential_breakdown.md", sequential_md.encode('utf-8'))
-    
-    zip_buffer.seek(0)
-    return zip_buffer.read()
 
 
 def display_transcription_preview(result: Dict[str, Any], max_segments: int = 5):
@@ -793,34 +770,15 @@ def main():
             # Download buttons
             st.subheader("📦 Download Options")
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.download_button(
-                    label="📦 Complete Results",
-                    data=download_data,
-                    file_name=f"transcription_{uploaded_file.name if uploaded_file else 'result'}.zip",
-                    mime="application/zip",
-                    type="primary",
-                    help="All selected formats + summary"
-                )
-            
-            with col2:
-                # Generate markdown analysis package
-                analysis_data = create_markdown_analysis_package(
-                    st.session_state.transcription_result, 
-                    converter
-                )
-                
-                st.download_button(
-                    label="📝 Analysis Pack",
-                    data=analysis_data,
-                    file_name="analysis_pack.zip",
-                    mime="application/zip", 
-                    type="secondary",
-                    help="4 markdown documents: complete, segments, questions, sequential"
-                )
-            
+            st.download_button(
+                label="📦 Download Complete Results",
+                data=download_data,
+                file_name=f"transcription_{uploaded_file.name if uploaded_file else 'result'}.zip",
+                mime="application/zip",
+                type="primary",
+                help="All selected formats + summary"
+            )
+
             # Individual format downloads
             st.subheader("📄 Individual Downloads")
             

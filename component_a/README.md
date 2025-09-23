@@ -102,7 +102,7 @@ uv python pin 3.10
 uv sync
 
 # Run the application
-uv run streamlit run src/app.py
+uv run streamlit run src/app.py --server.maxUploadSize 1024
 ```
 
 ### Using pip
