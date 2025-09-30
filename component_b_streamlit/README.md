@@ -45,7 +45,7 @@ Este sistema implementa una arquitectura distribuida multi-agente que transforma
 
 ### ✨ Características Principales
 
-- 🤖 **6 agentes especializados** trabajando in pipeline secuencial
+- 🤖 **4 agentes especializados** en cadena de procesamiento (punctuator → formatter → titler → qa_generator)
 - 🔄 **Arquitectura LLM-agnóstica** usando fast-agent framework
 - 📊 **Segmentación inteligente** basada en contenido semántico
 - ❓ **Q&A automático** con referencias cruzadas y contexto multimodal
@@ -92,31 +92,39 @@ graph TD
     style M fill:#4caf50
 ```
 
-### **Arquitectura Real Implementada (Híbrida)**
+### **Nueva Arquitectura Multi-Agente Especializada (Refactorizada)**
 
 ```mermaid
 graph LR
     subgraph "🔧 Componente Programático (Sin LLM)"
         A[🧠 IntelligentSegmenter<br/>• Segmentación semántica<br/>• Sentence transformers<br/>• 100% preservación garantizada]
     end
-    
-    subgraph "🤖 Componente LLM (Fast-Agent)"
-        B[🎯 Simple Processor<br/>AGENTE UNIFICADO que combina:<br/>• Punctuator + Titler<br/>• Formatter Cleaner<br/>• Question Generator<br/>• Contextual Answerer]
+
+    subgraph "🤖 Pipeline de Agentes Especializados"
+        B[🔤 Punctuator<br/>• Solo puntuación<br/>• Temp: 0.3<br/>• Preserva todas las palabras]
+        C[✏️ Formatter<br/>• Oral → escrito<br/>• Temp: 0.4<br/>• Elimina fillers]
+        D[📝 Titler<br/>• Solo títulos<br/>• Temp: 0.5<br/>• 3-8 palabras]
+        E[❓ QA Generator<br/>• Solo Q&A<br/>• Temp: 0.6<br/>• 3-5 preguntas]
     end
-    
+
     subgraph "🛡️ Sistema de Robustez"
-        C[🔄 Rate Limit Handler<br/>• Auto-retry en errores 429<br/>• Backoff exponencial<br/>• Progreso visual]
-        D[📊 Metrics & Logging<br/>• Estadísticas de retención<br/>• Contador de reintentos<br/>• Tiempo de procesamiento]
+        F[🔄 Rate Limit Handler<br/>• Auto-retry en errores 429<br/>• Backoff exponencial<br/>• Progreso visual]
+        G[📊 Multimodal Context<br/>• Extracción real PDFs<br/>• Soporte multi-formato<br/>• Validación documentos]
     end
-    
+
     A --> B
     B --> C
     C --> D
-    
-    style A fill:#e3f2fd
-    style B fill:#fff3e0
-    style C fill:#ff9800
-    style D fill:#e8f5e8
+    D --> E
+    E --> F
+    F --> G
+
+    style B fill:#ffebee
+    style C fill:#e8f5e8
+    style D fill:#e3f2fd
+    style E fill:#fff3e0
+    style F fill:#ff9800
+    style G fill:#f3e5f5
 ```
 
 ### **Flujo Real de Datos y Procesamiento**
@@ -141,17 +149,17 @@ sequenceDiagram
     IS->>IS: Semantic analysis + clustering
     IS->>RM: 14-17 segmentos (100% preservación)
     
-    Note over RM: PASO 3: Procesamiento LLM por segmento
+    Note over RM: PASO 3: Procesamiento con agentes especializados
     RM->>RLH: execute_with_retry(process_operation)
-    
+
     loop Para cada segmento (14-17x)
         RLH->>FA: fast.run() context
-        FA->>SP: simple_processor.send(segment + context)
-        
-        Note over SP: Agente unificado procesa:<br/>• Puntuación + Formato<br/>• Título + Q&A
-        
-        SP->>FA: Segmento completo procesado
-        FA->>RLH: Result + retry handling
+        FA->>FA: content_pipeline.send(segment + context)
+
+        Note over FA: Pipeline de agentes especializados:<br/>1. Punctuator (temp=0.3)<br/>2. Formatter (temp=0.4)<br/>3. Titler (temp=0.5)<br/>4. QA Generator (temp=0.6)
+
+        FA->>RLH: Resultado del pipeline
+        RLH->>RLH: Result + retry handling
         
         alt Rate limit error (429)
             RLH->>RLH: Exponential backoff + retry
@@ -316,26 +324,29 @@ graph TD
 ### **Implementación en Nuestro Sistema**
 
 ```python
-# Ejemplo de agente implementado
+# Ejemplo de agente especializado
 @fast.agent(
-    name="question_generator",
+    name="punctuator",
     model=DEFAULT_MODEL,  # azure.gpt-4.1
-    instruction="""Generate 3-5 high-value, specific questions 
-    from each content segment for educational purposes..."""
+    instruction="""You are a punctuation specialist.
+    Add proper punctuation to unpunctuated text while
+    preserving 100% of original words...""",
+    request_params=RequestParams(
+        maxTokens=4096,
+        temperature=0.3  # Baja temperatura para tarea mecánica
+    )
 )
-def question_generator():
+def punctuator():
     pass
 
-# Ejemplo de orquestador
-@fast.orchestrator(
-    name="enhanced_orchestrator",
-    agents=["punctuator", "segmenter", "titler", 
-            "formatter_cleaner", "question_generator", 
-            "contextual_answerer"],
-    instruction="""Process transcription through complete 
-    workflow including Q&A generation..."""
+# Ejemplo de cadena de procesamiento
+@fast.chain(
+    name="content_pipeline",
+    sequence=["punctuator", "formatter", "titler", "qa_generator"],
+    instruction="Complete content processing pipeline with specialized agents",
+    cumulative=True  # Cada agente recibe resultado del anterior
 )
-def enhanced_orchestrator_workflow():
+def content_pipeline():
     pass
 ```
 
@@ -842,11 +853,15 @@ graph TD
 ```
 distributed_system/
 ├── 📁 src/
-│   ├── enhanced_agents.py          # 🎯 Sistema adaptativo principal + simple_processor
-│   ├── meeting_processor.py       # 👥 Agente especializado para reuniones diarizadas  
+│   ├── 📁 agents/
+│   │   └── specialized_agents.py  # 🎯 NUEVA ARQUITECTURA: 4 agentes especializados
+│   ├── 📁 utils/
+│   │   └── multimodal_context.py  # 🖼️ NUEVO: Extracción real de PDFs y documentos
+│   ├── enhanced_agents.py          # 🔄 Sistema adaptativo (con agente monolítico legacy)
+│   ├── meeting_processor.py       # 👥 Agente especializado para reuniones diarizadas
 │   ├── content_format_detector.py # 🔍 Detector automático de formato de contenido
 │   ├── intelligent_segmenter.py   # 🧠 Segmentación semántica programática
-│   ├── simple_agents.py           # 📚 Versión básica (legacy)  
+│   ├── simple_agents.py           # 📚 Versión básica (legacy)
 │   ├── qa_agents.py               # ❓ Agentes Q&A especializados (legacy)
 │   └── diagnostic_agents.py       # 🔧 Herramientas de diagnóstico
 ├── 📁 examples/
@@ -875,11 +890,13 @@ distributed_system/
 Este sistema representa una **implementación completa y funcional** de procesamiento distribuido multi-agente para transcripciones, con las siguientes innovaciones:
 
 ### ✨ **Logros Técnicos**
-- 🤖 **Arquitectura Multi-Agente** con 6 agentes especializados
+- 🤖 **Arquitectura Multi-Agente Especializada** con 4 agentes en cadena (punctuator → formatter → titler → qa_generator)
 - 🔄 **LLM-Agnóstico** usando fast-agent framework
 - ❓ **Q&A Automático** con referencias contextuales precisas
-- 🖼️ **Integración Multimodal** STT + PDF + imágenes
+- 🖼️ **Contexto Multimodal Funcional** - Extracción real de contenido PDFs (no solo nombres)
 - 📈 **Escalabilidad Comprobada** 200 → 22,000+ palabras
+- 🎯 **Debugging Granular** - Cada agente testeable independientemente
+- 🧪 **Tests Comprehensivos** - 25+ tests cubriendo arquitectura y funcionalidad
 
 ### 🎯 **Valor Educativo**
 - 📚 Transforma transcripciones en **material de estudio completo**
