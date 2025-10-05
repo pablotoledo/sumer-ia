@@ -136,7 +136,7 @@ def test_streamlit_dependencies():
         ('plotly', 'Gráficos interactivos'),
         ('pandas', 'Manipulación de datos'),
         ('requests', 'HTTP requests'),
-        ('pyyaml', 'Configuración YAML')
+        ('yaml', 'Configuración YAML')  # pyyaml se importa como 'yaml'
     ]
     
     all_ok = True
