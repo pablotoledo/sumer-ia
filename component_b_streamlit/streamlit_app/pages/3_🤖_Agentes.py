@@ -166,23 +166,41 @@ def show_agents_overview():
         <div class="mermaid-container">
             <div class="mermaid">
             graph TD
-                A[📝 Contenido Input] --> B[🔍 Content Format Detector]
-                B --> C{¿Formato Detectado?}
-                C -->|Reunión Diarizada| D[👥 Meeting Processor]
-                C -->|Contenido Lineal| E[📚 Simple Processor]
-                D --> F[📋 Meeting Output]
-                E --> G[📄 Educational Output]
-                F --> H[📥 Documento Final]
-                G --> H
+                A[📝 Contenido Input] --> B{Método Segmentación}
+                B -->|>3000 palabras| C[🧠 GPT-4.1 Intelligent Segmenter]
+                B -->|<3000 palabras| D[📐 Segmentación Programática]
+
+                C --> E[📊 Plan Segmentación JSON]
+                D --> F[📋 Segmentos Fijos]
+
+                E --> G[🔍 Content Format Detector]
+                F --> G
+
+                G --> H{¿Formato Detectado?}
+                H -->|Reunión Diarizada| I[👥 Meeting Processor]
+                H -->|Contenido Lineal| J[📚 Simple Processor]
+
+                I --> K[Loop: Procesar cada segmento<br/>CONTEXTO LIMPIO]
+                J --> K
+
+                K --> L[📋 Meeting/Educational Output]
+                L --> M[🔗 Ensamblado Final]
+                M --> N[📥 Documento Final]
 
                 style A fill:#e1f5fe
-                style B fill:#f3e5f5
-                style C fill:#fff3e0
-                style D fill:#e8f5e8
-                style E fill:#e8f5e8
-                style F fill:#fff8e1
-                style G fill:#fff8e1
-                style H fill:#e3f2fd
+                style B fill:#fff3e0
+                style C fill:#c8e6c9
+                style D fill:#ffccbc
+                style E fill:#d1c4e9
+                style F fill:#f8bbd0
+                style G fill:#f3e5f5
+                style H fill:#fff3e0
+                style I fill:#e8f5e8
+                style J fill:#e8f5e8
+                style K fill:#fff9c4
+                style L fill:#fff8e1
+                style M fill:#b2ebf2
+                style N fill:#e3f2fd
             </div>
         </div>
 
@@ -245,11 +263,26 @@ def show_agents_overview():
     st.markdown("""
     **Proceso detallado:**
 
-    1. **Análisis de Formato**: El sistema analiza automáticamente el contenido para detectar el tipo
-    2. **Segmentación**: Se divide el contenido en segmentos manejables (300-1000 palabras)
-    3. **Procesamiento**: Cada segmento se procesa con el agente especializado apropiado
-    4. **Q&A Generation**: Se generan preguntas y respuestas educativas para cada segmento
-    5. **Ensamblaje**: Se combina todo en un documento final estructurado
+    1. **Selección de Método de Segmentación**:
+       - Para contenido >3000 palabras: GPT-4.1 analiza y crea plan de segmentación semántica
+       - Para contenido <3000 palabras: Segmentación programática cada 2500 palabras
+
+    2. **Segmentación Inteligente** (GPT-4.1):
+       - Analiza todo el contenido (hasta 1M tokens de contexto)
+       - Identifica transiciones naturales de temas
+       - Genera metadata por segmento (título, keywords, conceptos clave)
+       - Retorna plan JSON con puntos de corte óptimos
+
+    3. **Análisis de Formato**: Detecta automáticamente si es reunión diarizada o contenido lineal
+
+    4. **Procesamiento con Contexto Limpio**:
+       - Cada segmento se procesa en una sesión NUEVA (sin memoria del anterior)
+       - Aprovecha metadata del segmentador para mejor comprensión
+       - Procesa con agente especializado (Simple o Meeting Processor)
+
+    5. **Q&A Generation**: Genera preguntas y respuestas educativas para cada segmento
+
+    6. **Ensamblaje Final**: Combina todos los segmentos en documento estructurado
     """)
 
 def show_prompts_editor(config_manager):

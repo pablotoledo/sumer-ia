@@ -30,21 +30,29 @@ class AgentInterface:
         """Inicializa los agentes FastAgent."""
         try:
             # Importar módulos FastAgent
-            from src.enhanced_agents import fast, meeting_fast, adaptive_segment_content
+            from src.enhanced_agents import fast, adaptive_segment_content
             from robust_main import RateLimitHandler
-            
+
             self._fast_agent = fast
-            self._meeting_agent = meeting_fast
+            # Use the same agent for both types for now
+            self._meeting_agent = fast
             self._adaptive_segment = adaptive_segment_content
             self._rate_limit_handler = RateLimitHandler(
                 max_retries=3,
                 base_delay=60
             )
-            
+
+            print(f"✅ Agents initialized successfully")
+            print(f"   • Fast agent: {self._fast_agent}")
+            print(f"   • Adaptive segment function: {self._adaptive_segment}")
+
             return True
-            
+
         except Exception as e:
             st.error(f"Error inicializando agentes: {e}")
+            print(f"❌ Error detallado: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     async def process_content(
@@ -52,87 +60,115 @@ class AgentInterface:
         content: str,
         documents: Optional[List[str]] = None,
         progress_callback=None,
-        agent_override: Optional[str] = None
+        agent_override: Optional[str] = None,
+        use_intelligent_segmentation: bool = True
     ) -> Dict[str, Any]:
         """
         Procesa contenido usando FastAgent.
-        
+
         Args:
             content: Texto STT a procesar
             documents: Lista de rutas a documentos adicionales
             progress_callback: Función para reportar progreso
             agent_override: Agente específico a usar (opcional)
-        
+            use_intelligent_segmentation: Si True, usa GPT-4.1 para segmentar inteligentemente
+
         Returns:
             Dict con resultado del procesamiento
         """
-        
+
         if not await self._initialize_agents():
             raise Exception("No se pudieron inicializar los agentes")
         
         try:
-            # Paso 1: Segmentación adaptativa
+            # PASO 1: Segmentación (Inteligente o Programática)
             if progress_callback:
-                progress_callback("Analizando formato del contenido...", 0.1)
-            
-            segments, recommended_agent = self._adaptive_segment(content)
-            
+                progress_callback("Analizando contenido para segmentación...", 0.1)
+
+            word_count = len(content.split())
+
+            # Decidir método de segmentación
+            if use_intelligent_segmentation and word_count > 3000:
+                # Usar segmentación AI para contenido grande
+                print(f"🧠 Using AI-powered intelligent segmentation ({word_count:,} words)")
+                enriched_segments, recommended_agent = await self._intelligent_segment_with_ai(content)
+                segmentation_method = 'intelligent_ai'
+            else:
+                # Usar método programático para contenido pequeño o si se desactiva AI
+                print(f"📐 Using programmatic segmentation ({word_count:,} words)")
+                segments, recommended_agent = self._adaptive_segment(content)
+                # Convert to enriched format
+                enriched_segments = [{'content': seg, 'metadata': {}} for seg in segments]
+                segmentation_method = 'programmatic'
+
+            # DEBUG: Log segmentation results
+            print(f"\n🔍 SEGMENTATION DEBUG:")
+            print(f"   • Number of segments: {len(enriched_segments)}")
+            print(f"   • Recommended agent: {recommended_agent}")
+            print(f"   • Method: {segmentation_method}")
+
             # Usar agent_override si se especifica
             if agent_override:
                 recommended_agent = agent_override
-            
+
             if progress_callback:
-                progress_callback(f"Usando agente: {recommended_agent}", 0.2)
-                progress_callback(f"Procesando {len(segments)} segmentos...", 0.3)
+                progress_callback(f"Segmentación completa: {len(enriched_segments)} segmentos", 0.2)
             
             # Paso 2: Configurar contexto multimodal
             multimodal_context = self._prepare_multimodal_context(documents)
             
-            # Paso 3: Procesamiento por segmentos con rate limiting
+            # PASO 3: Procesamiento por segmentos con CONTEXTO LIMPIO
             processed_segments = []
-            total_segments = len(segments)
-            
+            total_segments = len(enriched_segments)
+
             # Seleccionar el agente FastAgent apropiado
             if recommended_agent == "meeting_processor":
                 agent = self._meeting_agent
             else:
                 agent = self._fast_agent
-            
-            for i, segment in enumerate(segments):
+
+            for i, enriched_segment in enumerate(enriched_segments):
+                segment_content = enriched_segment['content']
+                segment_metadata = enriched_segment.get('metadata', {})
+
                 if progress_callback:
-                    progress = 0.3 + (0.6 * (i + 1) / total_segments)
-                    progress_callback(f"Procesando segmento {i + 1}/{total_segments}...", progress)
-                
-                # Procesar segmento con retry automático
+                    progress = 0.2 + (0.7 * (i + 1) / total_segments)
+                    topic = segment_metadata.get('topic', f'Segmento {i + 1}')
+                    progress_callback(f"Procesando: {topic[:50]}...", progress)
+
+                # IMPORTANTE: Cada iteración crea una NUEVA sesión = CONTEXTO LIMPIO
                 try:
-                    async with agent.run() as agent_instance:
-                        segment_context = f"""
-Segmento {i + 1} de {total_segments}:
+                    async with agent.run() as agent_instance:  # Nueva sesión aquí
+                        # Construir prompt enriquecido con metadata
+                        segment_prompt = self._build_segment_prompt(
+                            segment_content=segment_content,
+                            segment_number=i + 1,
+                            total_segments=total_segments,
+                            metadata=segment_metadata,
+                            multimodal_context=multimodal_context
+                        )
 
-{segment}
-
-{multimodal_context}
-"""
-                        
                         result = await self._rate_limit_handler.execute_with_retry(
                             agent_instance.simple_processor.send,
-                            segment_context
+                            segment_prompt
                         )
-                        
+
                         processed_segments.append({
                             'segment_number': i + 1,
-                            'original_content': segment,
+                            'original_content': segment_content,
                             'processed_content': result,
-                            'agent_used': recommended_agent
+                            'agent_used': recommended_agent,
+                            'metadata': segment_metadata
                         })
-                
+
                 except Exception as e:
                     st.warning(f"Error procesando segmento {i + 1}: {e}")
                     processed_segments.append({
                         'segment_number': i + 1,
-                        'original_content': segment,
+                        'original_content': segment_content,
                         'processed_content': f"Error procesando segmento: {e}",
                         'agent_used': recommended_agent,
+                        'metadata': segment_metadata,
                         'error': True
                     })
             
@@ -157,7 +193,8 @@ Segmento {i + 1} de {total_segments}:
                 'total_segments': total_segments,
                 'retry_count': self._rate_limit_handler.retry_count,
                 'original_content': content,
-                'multimodal_files': documents or []
+                'multimodal_files': documents or [],
+                'segmentation_method': segmentation_method
             }
             
         except Exception as e:
@@ -323,26 +360,70 @@ Segmento {i + 1} de {total_segments}:
             except Exception as e:
                 st.warning(f"No se pudo eliminar archivo temporal {file_path}: {e}")
 
+    async def _intelligent_segment_with_ai(self, content: str) -> Tuple[List[Dict[str, Any]], str]:
+        """Wrapper para llamar a la función de segmentación inteligente."""
+        from src.enhanced_agents import adaptive_segment_content_v2
+        return await adaptive_segment_content_v2(content)
+
+    def _build_segment_prompt(
+        self,
+        segment_content: str,
+        segment_number: int,
+        total_segments: int,
+        metadata: Dict[str, Any],
+        multimodal_context: str
+    ) -> str:
+        """
+        Construye el prompt para procesar un segmento, incluyendo metadata útil.
+        """
+        prompt_parts = []
+
+        # Header con posición
+        prompt_parts.append(f"SEGMENTO {segment_number} de {total_segments}")
+
+        # Metadata si está disponible
+        if metadata:
+            has_metadata = any(k in metadata for k in ['topic', 'keywords', 'key_concepts', 'section_type'])
+            if has_metadata:
+                prompt_parts.append("\nMETADATA DEL SEGMENTO:")
+                if 'topic' in metadata:
+                    prompt_parts.append(f"• Tema principal: {metadata['topic']}")
+                if 'keywords' in metadata and metadata['keywords']:
+                    prompt_parts.append(f"• Palabras clave: {', '.join(metadata['keywords'][:5])}")
+                if 'key_concepts' in metadata and metadata['key_concepts']:
+                    prompt_parts.append(f"• Conceptos clave: {', '.join(metadata['key_concepts'][:3])}")
+                if 'section_type' in metadata:
+                    prompt_parts.append(f"• Tipo de sección: {metadata['section_type']}")
+
+        # Contenido del segmento
+        prompt_parts.append(f"\nCONTENIDO:\n{segment_content}")
+
+        # Contexto multimodal
+        if multimodal_context:
+            prompt_parts.append(f"\n{multimodal_context}")
+
+        return '\n'.join(prompt_parts)
+
 # Helper functions para Streamlit
 def run_async_in_streamlit(coroutine):
     """Ejecuta una coroutine asíncrona en Streamlit de forma simple."""
-    import concurrent.futures
-    import threading
+    import nest_asyncio
 
-    def run_in_thread():
-        # Crear un nuevo event loop para este hilo
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
-        try:
-            return new_loop.run_until_complete(coroutine)
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
+    # Aplicar nest_asyncio para permitir event loops anidados
+    nest_asyncio.apply()
 
-    # Siempre ejecutar en un hilo separado para evitar conflictos
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(run_in_thread)
-        return future.result()
+    # Obtener o crear event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Ejecutar la coroutine en el event loop actual
+    return loop.run_until_complete(coroutine)
 
 def create_progress_callback():
     """Crea un callback de progreso para Streamlit."""

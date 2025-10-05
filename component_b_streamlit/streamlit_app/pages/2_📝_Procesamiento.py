@@ -173,7 +173,44 @@ def show_input_tab(config_manager, agent_interface):
         st.info(f"ℹ️ {description}")
     
     st.session_state.selected_agent = selected_agent if selected_agent != "auto" else None
-    
+
+    # Método de segmentación
+    st.subheader("🧠 Método de Segmentación")
+
+    word_count = len(st.session_state.get('input_content', '').split())
+
+    segmentation_method = st.radio(
+        "¿Cómo dividir el contenido?",
+        options=[
+            "🧠 Inteligente (GPT-4.1 analiza y segmenta)",
+            "📐 Programático (división fija cada 2500 palabras)"
+        ],
+        index=0 if word_count > 3000 else 1,  # Auto-select based on content size
+        help="""
+        **Inteligente (Recomendado para >3000 palabras):**
+        GPT-4.1 analiza tu contenido completo y encuentra los mejores puntos
+        de corte semánticos basándose en cambios de tema y transiciones naturales.
+        Cada segmento será una unidad lógica coherente.
+
+        **Programático (Rápido para contenido corto):**
+        División simple cada 2500 palabras buscando límites de oraciones.
+        Más rápido pero puede cortar en mitad de conceptos.
+        """
+    )
+
+    st.session_state.use_intelligent_segmentation = (
+        "Inteligente" in segmentation_method
+    )
+
+    # Info box explaining the choice
+    if word_count > 0:
+        if st.session_state.use_intelligent_segmentation and word_count > 3000:
+            st.success(f"✅ Segmentación inteligente: GPT-4.1 analizará tus {word_count:,} palabras y creará ~{word_count // 2500} segmentos óptimos")
+        elif st.session_state.use_intelligent_segmentation:
+            st.info(f"💡 Contenido corto ({word_count:,} palabras): considera usar segmentación programática para mayor velocidad")
+        else:
+            st.info(f"📐 Segmentación programática: ~{max(1, word_count // 2500)} segmentos de 2500 palabras cada uno")
+
     # Configuración de Q&A
     st.subheader("❓ Configuración de Q&A")
     
@@ -296,13 +333,17 @@ def process_content(agent_interface):
     st.info("⚡ Ejecutando procesamiento con FastAgent...")
 
     try:
+        # Obtener configuración de segmentación
+        use_intelligent_segmentation = st.session_state.get('use_intelligent_segmentation', True)
+
         # Ejecutar procesamiento
         result = run_async_in_streamlit(
             agent_interface.process_content(
                 content=content,
                 documents=document_paths if document_paths else None,
                 progress_callback=progress_callback,
-                agent_override=selected_agent
+                agent_override=selected_agent,
+                use_intelligent_segmentation=use_intelligent_segmentation
             )
         )
         
@@ -313,12 +354,16 @@ def process_content(agent_interface):
             st.success("🎉 **Procesamiento completado exitosamente!**")
             
             # Mostrar métricas
+            segmentation_emoji = "🧠" if result.get('segmentation_method') == 'intelligent_ai' else "📐"
+            segmentation_label = "Inteligente (AI)" if result.get('segmentation_method') == 'intelligent_ai' else "Programático"
+
             metrics = {
                 "Segmentos procesados": {"value": result['total_segments']},
                 "Agente utilizado": {"value": result['agent_used']},
+                "Método de segmentación": {"value": f"{segmentation_emoji} {segmentation_label}"},
                 "Reintentos": {"value": result['retry_count']}
             }
-            
+
             show_metrics_cards(metrics)
             
             # Preview del resultado
