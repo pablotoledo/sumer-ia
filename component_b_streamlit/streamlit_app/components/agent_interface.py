@@ -161,6 +161,14 @@ class AgentInterface:
                             'metadata': segment_metadata
                         })
 
+                        # Delay proactivo entre segmentos (excepto el último)
+                        if i < len(enriched_segments) - 1:
+                            delay = self._get_inter_segment_delay()
+                            if delay > 0:
+                                if progress_callback:
+                                    progress_callback(f"Esperando {delay}s antes del siguiente segmento...", current_progress)
+                                await asyncio.sleep(delay)
+
                 except Exception as e:
                     st.warning(f"Error procesando segmento {i + 1}: {e}")
                     processed_segments.append({
@@ -228,60 +236,59 @@ class AgentInterface:
         original_content: str,
         documents: Optional[List[str]]
     ) -> str:
-        """Ensambla el documento final a partir de los segmentos procesados."""
-        
+        """
+        Ensambla el documento final en Markdown simple.
+        Cada segmento incluye su contenido Y sus preguntas juntos, sin duplicaciones.
+        """
+
         doc_parts = []
-        
+
         # Header del documento
-        doc_parts.append("# Documento Procesado - FastAgent")
-        doc_parts.append(f"**Generado**: {self._get_timestamp()}")
-        doc_parts.append(f"**Segmentos procesados**: {len(processed_segments)}")
-        
+        doc_parts.append("# Documento Procesado")
+        doc_parts.append(f"\n**Fecha**: {self._get_timestamp()}")
+        doc_parts.append(f"**Segmentos**: {len(processed_segments)}")
+
         if documents:
-            doc_parts.append(f"**Documentos adicionales**: {', '.join([Path(d).name for d in documents])}")
-        
+            doc_parts.append(f"**Documentos de referencia**: {', '.join([Path(d).name for d in documents])}")
+
         doc_parts.append("\n---\n")
-        
-        # Tabla de contenidos
-        doc_parts.append("## Tabla de Contenidos")
-        for segment in processed_segments:
-            if not segment.get('error', False):
-                # Extraer título del contenido procesado
-                title = self._extract_title(segment['processed_content'])
-                doc_parts.append(f"- [Segmento {segment['segment_number']}: {title}](#segmento-{segment['segment_number']})")
-        
-        doc_parts.append("- [Preguntas y Respuestas](#preguntas-y-respuestas)")
-        doc_parts.append("\n---\n")
-        
-        # Contenido principal
-        doc_parts.append("## Contenido Principal\n")
-        
+
+        # Procesar cada segmento (contenido + preguntas juntos)
         for segment in processed_segments:
             if segment.get('error', False):
-                doc_parts.append(f"### Segmento {segment['segment_number']}: Error\n")
-                doc_parts.append(f"❌ {segment['processed_content']}\n")
+                # Segmento con error
+                doc_parts.append(f"## ❌ Error en Segmento {segment['segment_number']}\n")
+                doc_parts.append(f"{segment['processed_content']}\n")
             else:
-                doc_parts.append(f"### Segmento {segment['segment_number']}\n")
-                doc_parts.append(segment['processed_content'])
+                # Extraer título del contenido procesado
+                title = self._extract_title(segment['processed_content'])
+                metadata = segment.get('metadata', {})
+
+                # Header del segmento
+                doc_parts.append(f"## {segment['segment_number']}. {title}\n")
+
+                # Mostrar metadata si existe (del segmentador inteligente)
+                if metadata.get('keywords'):
+                    keywords_text = ', '.join(metadata['keywords'][:5])
+                    doc_parts.append(f"*Palabras clave: {keywords_text}*\n")
+
+                # Contenido del segmento (SIN las preguntas, las extraeremos aparte)
+                content_without_qa = self._extract_content_without_qa(segment['processed_content'])
+                doc_parts.append(content_without_qa)
                 doc_parts.append("\n")
-        
-        # Sección Q&A (extraer de los segmentos procesados)
-        doc_parts.append("\n---\n")
-        doc_parts.append("## Preguntas y Respuestas\n")
-        
-        for segment in processed_segments:
-            if not segment.get('error', False):
+
+                # Preguntas del segmento como subsección
                 qa_content = self._extract_qa_content(segment['processed_content'])
                 if qa_content:
-                    title = self._extract_title(segment['processed_content'])
-                    doc_parts.append(f"### Segmento {segment['segment_number']}: {title}\n")
+                    doc_parts.append("### 📚 Preguntas y Respuestas\n")
                     doc_parts.append(qa_content)
                     doc_parts.append("\n")
-        
+
+                doc_parts.append("---\n")
+
         # Footer
-        doc_parts.append("\n---\n")
-        doc_parts.append("*Documento generado por FastAgent - Sistema Multi-Agente*")
-        
+        doc_parts.append("\n*Generado por FastAgent*")
+
         return "\n".join(doc_parts)
     
     def _extract_title(self, content: str) -> str:
@@ -295,20 +302,67 @@ class AgentInterface:
                 return line[:50] + "..." if len(line) > 50 else line
         return "Sin título"
     
+    def _extract_content_without_qa(self, content: str) -> str:
+        """Extrae el contenido principal SIN la sección de Q&A."""
+        lines = content.split('\n')
+        content_lines = []
+
+        # Buscar marcadores comunes de inicio de sección Q&A
+        qa_markers = [
+            'preguntas y respuestas',
+            'preguntas',
+            'q&a',
+            '## preguntas',
+            '### preguntas',
+            '---'
+        ]
+
+        for i, line in enumerate(lines):
+            line_lower = line.lower().strip()
+
+            # Si encontramos un marcador de Q&A, detenemos
+            if any(marker in line_lower for marker in qa_markers):
+                # Verificar si las siguientes líneas son realmente Q&A
+                if i + 1 < len(lines):
+                    next_lines = '\n'.join(lines[i:i+5]).lower()
+                    if 'pregunta' in next_lines or '¿' in next_lines or 'respuesta' in next_lines:
+                        break
+
+            content_lines.append(line)
+
+        return '\n'.join(content_lines).strip()
+
     def _extract_qa_content(self, content: str) -> str:
-        """Extrae la sección Q&A de un segmento procesado."""
+        """Extrae SOLO la sección Q&A de un segmento procesado."""
         lines = content.split('\n')
         qa_section = []
         in_qa_section = False
-        
+
+        # Marcadores de inicio de Q&A
+        qa_start_markers = [
+            'preguntas y respuestas',
+            'preguntas',
+            'q&a',
+            '## preguntas',
+            '### preguntas'
+        ]
+
         for line in lines:
-            if any(keyword in line.lower() for keyword in ['pregunta', 'respuesta', '¿', '?', 'q&a']):
+            line_lower = line.lower().strip()
+
+            # Detectar inicio de sección Q&A
+            if not in_qa_section and any(marker in line_lower for marker in qa_start_markers):
                 in_qa_section = True
-            
+                continue  # Saltar el header "Preguntas y Respuestas"
+
+            # Una vez dentro, capturar todo hasta encontrar separador o fin
             if in_qa_section:
+                # Detenerse en separadores de secciones
+                if line.strip() == '---' and len(qa_section) > 5:
+                    break
                 qa_section.append(line)
-        
-        return '\n'.join(qa_section) if qa_section else ""
+
+        return '\n'.join(qa_section).strip() if qa_section else ""
     
     def _get_timestamp(self) -> str:
         """Retorna timestamp formateado."""

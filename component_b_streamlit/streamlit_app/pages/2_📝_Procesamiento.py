@@ -22,15 +22,10 @@ sys.path.append(str(parent_dir))
 from components.config_manager import ConfigManager
 from components.ui_components import (
     setup_page_config, show_sidebar, show_config_status,
-    show_file_uploader, show_download_button, show_error_message,
-    show_expandable_content, show_metrics_cards
+    show_file_uploader, show_error_message, show_metrics_cards
 )
 from components.agent_interface import (
-    AgentInterface, run_async_in_streamlit, create_progress_callback
-)
-from utils.file_handlers import (
-    create_complete_zip_package, remove_segment_numbers,
-    extract_qa_section_clean
+    AgentInterface, run_async_in_streamlit
 )
 
 def main():
@@ -443,142 +438,31 @@ def show_results_tab():
     
     document = result['document']
     
-    # Tabs para diferentes vistas
-    view_tab1, view_tab2, view_tab3 = st.tabs([
-        "📖 Vista Markdown",
-        "📝 Texto Plano", 
-        "🔍 Vista por Segmentos"
-    ])
-    
-    with view_tab1:
-        st.markdown(document)
-    
-    with view_tab2:
-        st.text_area("Documento completo:", document, height=400, disabled=True)
-    
-    with view_tab3:
-        show_segments_view(result)
-    
-    st.markdown("---")
-    
-    # Opciones de descarga
-    st.subheader("💾 Descargar Resultados")
-
-    # Opción de descarga ZIP completa (destacada)
-    col_zip = st.columns([1])[0]
-    with col_zip:
-        if st.button("📦 Descargar Paquete Completo (ZIP)", type="primary", use_container_width=True):
-            with st.spinner("Preparando paquete ZIP..."):
-                try:
-                    zip_path = create_complete_zip_package(result)
-
-                    # Leer el archivo ZIP para descarga
-                    with open(zip_path, 'rb') as f:
-                        zip_data = f.read()
-
-                    # Limpiar archivo temporal
-                    os.unlink(zip_path)
-
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    st.download_button(
-                        label="📥 Descargar ZIP",
-                        data=zip_data,
-                        file_name=f"procesamiento_completo_{timestamp}.zip",
-                        mime="application/zip"
-                    )
-
-                    st.success("✅ Paquete ZIP preparado con 4 formatos:")
-                    st.info("""
-                    📄 **Contenido del ZIP:**
-                    - `documento_completo.md` - Formato markdown sin números de segmento
-                    - `documento_texto.txt` - Texto plano sin números de segmento
-                    - `documento_consolidado.md` - Contenido seguido + preguntas al final
-                    - `preguntas_respuestas.md` - Solo Q&A sin números de segmento
-                    """)
-
-                except Exception as e:
-                    st.error(f"Error preparando ZIP: {e}")
+    # Vista del documento
+    st.markdown(document)
 
     st.markdown("---")
-    st.subheader("📄 Descargas Individuales")
 
-    col1, col2, col3 = st.columns(3)
+    # Descarga simple de Markdown
+    st.subheader("💾 Descargar Documento")
 
-    with col1:
-        # Markdown sin números de segmento
-        markdown_clean = remove_segment_numbers(document)
-        show_download_button(
-            markdown_clean,
-            "documento_procesado.md",
-            "Markdown"
-        )
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    with col2:
-        # Versión sin markdown para .txt (sin números de segmento)
-        markdown_clean = remove_segment_numbers(document)
-        plain_text = markdown_clean.replace('#', '').replace('**', '').replace('*', '')
-        show_download_button(
-            plain_text,
-            "documento_procesado.txt",
-            "Texto Plano"
-        )
+    st.download_button(
+        label="📥 Descargar Markdown",
+        data=document,
+        file_name=f"documento_procesado_{timestamp}.md",
+        mime="text/markdown",
+        type="primary",
+        use_container_width=True
+    )
 
-    with col3:
-        # Solo la sección Q&A (sin números de segmento)
-        qa_section = extract_qa_section_clean(document)
-        if qa_section:
-            show_download_button(
-                qa_section,
-                "preguntas_respuestas.md",
-                "Solo Q&A"
-            )
-        else:
-            st.info("No hay sección Q&A disponible")
+    st.info("📄 El documento incluye todo el contenido procesado con sus preguntas integradas por segmento")
     
     # Estadísticas detalladas
     with st.expander("📊 Estadísticas Detalladas"):
         show_detailed_stats(result)
 
-def show_segments_view(result):
-    """Muestra vista detallada por segmentos."""
-    
-    segments = result.get('segments', [])
-    
-    if not segments:
-        st.warning("No hay información detallada de segmentos disponible.")
-        return
-    
-    for i, segment in enumerate(segments):
-        with st.expander(f"Segmento {segment['segment_number']} {' ❌' if segment.get('error') else ''}"):
-            
-            if segment.get('error'):
-                st.error(f"Error: {segment['processed_content']}")
-            else:
-                # Contenido original
-                st.subheader("📝 Contenido Original")
-                st.text_area(
-                    f"Original {segment['segment_number']}:", 
-                    segment['original_content'], 
-                    height=100, 
-                    disabled=True,
-                    key=f"orig_{i}"
-                )
-                
-                # Contenido procesado
-                st.subheader("✨ Contenido Procesado")
-                st.markdown(segment['processed_content'])
-                
-                # Metadatos
-                st.subheader("🔧 Metadatos")
-                st.json({
-                    'agente_usado': segment['agent_used'],
-                    'palabras_originales': len(segment['original_content'].split()),
-                    'palabras_procesadas': len(segment['processed_content'].split())
-                })
-
-def extract_qa_section(document: str) -> str:
-    """Extrae solo la sección de Q&A del documento."""
-    return extract_qa_section_clean(document)
 
 def show_detailed_stats(result):
     """Muestra estadísticas detalladas del procesamiento."""
