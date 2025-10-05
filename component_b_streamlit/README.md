@@ -199,11 +199,18 @@ El sistema usa múltiples agentes especializados:
 - **OpenAI** (GPT-4, o1-mini)
 - **Anthropic** (Claude)
 
-### Rate Limiting automático:
+### Rate Limiting inteligente:
+El sistema incluye **prevención proactiva** de errores 429:
+- **Delay entre segmentos**: Espera configurable entre requests (evita saturar API)
+- **Reintentos automáticos**: Backoff exponencial en caso de error 429
+- **Configuración flexible**: Ajustable desde UI con presets (Conservador/Balanceado/Agresivo)
+
 ```yaml
 rate_limiting:
   requests_per_minute: 3
-  delay_between_requests: 30
+  delay_between_requests: 30      # Prevención proactiva (delay entre segmentos)
+  max_retries: 3                  # Reintentos en caso de 429
+  retry_base_delay: 60            # Delay inicial (backoff exponencial)
   max_tokens_per_request: 50000
 ```
 
@@ -233,11 +240,12 @@ uv run python test_streamlit_integration.py
 ## 📊 Características Técnicas
 
 - **LLM-agnóstico**: Funciona con cualquier proveedor
-- **Segmentación inteligente**: Divide contenido largo automáticamente
+- **Segmentación inteligente**: Divide contenido largo automáticamente (GPT-4.1 o programático)
 - **Preservación de contenido**: 85-95% del contenido original conservado
 - **Auto-detección**: Distingue reuniones de contenido lineal
 - **Multimodal**: Soporte para imágenes en contexto
 - **Escalable**: Maneja desde 200 a 22,000+ palabras
+- **Rate limiting inteligente**: Prevención proactiva de errores 429 con delays configurables
 
 ## 🔧 Solución de Problemas
 
@@ -246,8 +254,14 @@ uv run python test_streamlit_integration.py
 - Comprobar que la URL base sea correcta
 
 ### Errores 429 (Rate Limit)
-- Aumentar `delay_between_requests` en la configuración
-- Reducir `requests_per_minute`
+El sistema ahora incluye **prevención automática**, pero si aún así ocurren:
+1. **Aumentar `delay_between_requests`** en ⚙️ Configuración → Rate Limiting
+   - Para S0 Tier: usar preset 🐌 Conservador (45s delay)
+2. **Ajustar `max_retries`** y `retry_base_delay`
+   - Más reintentos = más tolerancia a errores
+3. **Revisar métricas** después de procesar
+   - Si "Reintentos por rate limit" > 3, aumentar delays
+4. Ver `RATE_LIMIT_IMPROVEMENTS.md` para configuración detallada por tier
 
 ### Problemas de dependencias
 ```bash

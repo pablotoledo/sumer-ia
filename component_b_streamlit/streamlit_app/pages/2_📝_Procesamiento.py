@@ -352,14 +352,24 @@ def process_content(agent_interface):
             segmentation_emoji = "🧠" if result.get('segmentation_method') == 'intelligent_ai' else "📐"
             segmentation_label = "Inteligente (AI)" if result.get('segmentation_method') == 'intelligent_ai' else "Programático"
 
+            # Obtener configuración de rate limiting
+            config_manager = ConfigManager()
+            rate_config = config_manager.get_rate_limiting_config()
+            delay_between = rate_config.get('delay_between_requests', 0)
+
             metrics = {
                 "Segmentos procesados": {"value": result['total_segments']},
                 "Agente utilizado": {"value": result['agent_used']},
                 "Método de segmentación": {"value": f"{segmentation_emoji} {segmentation_label}"},
-                "Reintentos": {"value": result['retry_count']}
+                "Reintentos por rate limit": {"value": result['retry_count']},
+                "Delay entre segmentos": {"value": f"{delay_between}s" if delay_between > 0 else "Ninguno"}
             }
 
             show_metrics_cards(metrics)
+
+            # Mostrar advertencia si hubo muchos reintentos
+            if result['retry_count'] > 3:
+                st.warning(f"⚠️ Se detectaron {result['retry_count']} reintentos por rate limit. Considera aumentar el 'Delay entre Requests' en la configuración.")
             
             # Preview del resultado
             st.subheader("👀 Preview del Resultado")

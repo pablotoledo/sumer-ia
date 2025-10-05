@@ -37,10 +37,18 @@ class AgentInterface:
             # Use the same agent for both types for now
             self._meeting_agent = fast
             self._adaptive_segment = adaptive_segment_content
+
+            # Obtener configuración de rate limiting
+            rate_config = self.config_manager.get_rate_limiting_config()
+            max_retries = rate_config.get('max_retries', 3)
+            base_delay = rate_config.get('retry_base_delay', 60)
+
             self._rate_limit_handler = RateLimitHandler(
-                max_retries=3,
-                base_delay=60
+                max_retries=max_retries,
+                base_delay=base_delay
             )
+
+            print(f"   • Rate limit: {max_retries} retries, {base_delay}s base delay")
 
             print(f"✅ Agents initialized successfully")
             print(f"   • Fast agent: {self._fast_agent}")
@@ -368,7 +376,22 @@ class AgentInterface:
         """Retorna timestamp formateado."""
         from datetime import datetime
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
+    def _get_inter_segment_delay(self) -> int:
+        """
+        Obtiene el delay configurado entre segmentos para evitar rate limits proactivamente.
+
+        Returns:
+            Delay en segundos (0 si no configurado)
+        """
+        try:
+            rate_config = self.config_manager.get_rate_limiting_config()
+            delay = rate_config.get('delay_between_requests', 0)
+            return int(delay)
+        except Exception as e:
+            print(f"⚠️ Error obteniendo delay entre requests: {e}")
+            return 0
+
     async def test_agent_connection(self, agent_name: str = "simple_processor") -> bool:
         """Prueba la conexión con un agente específico."""
         try:

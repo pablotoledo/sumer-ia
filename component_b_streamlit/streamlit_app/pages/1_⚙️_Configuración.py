@@ -291,29 +291,28 @@ def show_rate_limiting_config(config_manager):
             )
         
         with col2:
-            backoff_factor = st.number_input(
-                "Factor de Backoff",
-                value=current_config.get('backoff_factor', 3.0),
-                min_value=1.0,
-                max_value=10.0,
-                step=0.5,
-                help="Multiplicador para el tiempo de espera en reintentos"
+            max_retries = st.number_input(
+                "Máximo de Reintentos",
+                value=current_config.get('max_retries', 3),
+                min_value=0,
+                max_value=10,
+                help="Número máximo de reintentos en caso de error 429"
             )
-            
+
             delay_between_requests = st.number_input(
                 "Delay entre Requests (segundos)",
                 value=current_config.get('delay_between_requests', 30),
-                min_value=5,
+                min_value=0,
                 max_value=300,
-                help="Tiempo de espera entre requests consecutivos"
+                help="Tiempo de espera entre requests consecutivos (proactivo)"
             )
         
-        max_backoff = st.number_input(
-            "Máximo Backoff (segundos)",
-            value=current_config.get('max_backoff', 600),
-            min_value=60,
-            max_value=1800,
-            help="Tiempo máximo de espera en reintentos"
+        retry_base_delay = st.number_input(
+            "Delay Base para Reintentos (segundos)",
+            value=current_config.get('retry_base_delay', 60),
+            min_value=10,
+            max_value=300,
+            help="Tiempo inicial de espera en el primer reintento (se duplica exponencialmente)"
         )
         
         # Presets comunes
@@ -325,25 +324,25 @@ def show_rate_limiting_config(config_manager):
             if st.form_submit_button("🐌 Conservador (S0 Tier)"):
                 max_tokens = 30000
                 requests_per_minute = 2
-                backoff_factor = 4.0
+                max_retries = 5
                 delay_between_requests = 45
-                max_backoff = 900
-        
+                retry_base_delay = 90
+
         with col2:
             if st.form_submit_button("⚖️ Balanceado"):
                 max_tokens = 50000
                 requests_per_minute = 5
-                backoff_factor = 2.0
+                max_retries = 3
                 delay_between_requests = 20
-                max_backoff = 300
-        
+                retry_base_delay = 60
+
         with col3:
             if st.form_submit_button("🚀 Agresivo"):
                 max_tokens = 80000
                 requests_per_minute = 10
-                backoff_factor = 1.5
+                max_retries = 2
                 delay_between_requests = 10
-                max_backoff = 120
+                retry_base_delay = 30
         
         submitted = st.form_submit_button("💾 Guardar Configuración")
         
@@ -351,11 +350,11 @@ def show_rate_limiting_config(config_manager):
             new_config = {
                 'max_tokens_per_request': max_tokens,
                 'requests_per_minute': requests_per_minute,
-                'backoff_factor': backoff_factor,
-                'max_backoff': max_backoff,
+                'max_retries': max_retries,
+                'retry_base_delay': retry_base_delay,
                 'delay_between_requests': delay_between_requests
             }
-            
+
             config_manager.update_rate_limiting_config(new_config)
             st.success("✅ Configuración de rate limiting guardada")
 

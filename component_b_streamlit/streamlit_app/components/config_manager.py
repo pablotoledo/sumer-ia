@@ -66,8 +66,8 @@ class ConfigManager:
             'rate_limiting': {
                 'max_tokens_per_request': 50000,
                 'requests_per_minute': 3,
-                'backoff_factor': 3.0,
-                'max_backoff': 600,
+                'max_retries': 3,
+                'retry_base_delay': 60,
                 'delay_between_requests': 30
             },
             'mcp': {
