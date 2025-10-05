@@ -16,8 +16,8 @@ class ConfigManager:
     """Gestor centralizado de configuración para FastAgent."""
     
     def __init__(self):
-        self.config_path = Path("../fastagent.config.yaml")
-        self.example_config_path = Path("../fastagent.config.yaml.example")
+        self.config_path = Path("fastagent.config.yaml")
+        self.example_config_path = Path("fastagent.config.yaml.example")
         self._config = None
         self._load_config()
     

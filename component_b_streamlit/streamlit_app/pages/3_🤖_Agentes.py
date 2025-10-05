@@ -9,6 +9,7 @@ Página para gestionar y personalizar agentes FastAgent.
 import streamlit as st
 import sys
 from pathlib import Path
+import streamlit.components.v1 as components
 
 # Añadir el directorio padre al path
 current_dir = Path(__file__).parent
@@ -119,22 +120,131 @@ def show_agents_overview():
     # Flujo de procesamiento
     st.markdown("---")
     st.subheader("🔄 Flujo de Procesamiento")
-    
+
+    # Renderizar diagrama Mermaid usando HTML directo
+    mermaid_html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.0/dist/mermaid.min.js"></script>
+        <style>
+            body {
+                margin: 0;
+                padding: 20px;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+            .mermaid-container {
+                width: 100%;
+                height: 100%;
+                overflow: auto;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                background-color: #fafafa;
+                padding: 20px;
+                box-sizing: border-box;
+            }
+            .mermaid {
+                width: 100%;
+                height: auto;
+                min-height: 400px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            /* Estilos para el diagrama */
+            .mermaid svg {
+                max-width: 100%;
+                height: auto;
+                cursor: grab;
+            }
+            .mermaid svg:active {
+                cursor: grabbing;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="mermaid-container">
+            <div class="mermaid">
+            graph TD
+                A[📝 Contenido Input] --> B[🔍 Content Format Detector]
+                B --> C{¿Formato Detectado?}
+                C -->|Reunión Diarizada| D[👥 Meeting Processor]
+                C -->|Contenido Lineal| E[📚 Simple Processor]
+                D --> F[📋 Meeting Output]
+                E --> G[📄 Educational Output]
+                F --> H[📥 Documento Final]
+                G --> H
+
+                style A fill:#e1f5fe
+                style B fill:#f3e5f5
+                style C fill:#fff3e0
+                style D fill:#e8f5e8
+                style E fill:#e8f5e8
+                style F fill:#fff8e1
+                style G fill:#fff8e1
+                style H fill:#e3f2fd
+            </div>
+        </div>
+
+        <script>
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'default',
+                flowchart: {
+                    useMaxWidth: false,
+                    htmlLabels: true,
+                    curve: 'basis'
+                }
+            });
+
+            // Hacer el SVG navegable
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(function() {
+                    const svg = document.querySelector('.mermaid svg');
+                    if (svg) {
+                        let isDown = false;
+                        let startX, startY, scrollLeft, scrollTop;
+                        const container = document.querySelector('.mermaid-container');
+
+                        svg.addEventListener('mousedown', (e) => {
+                            isDown = true;
+                            startX = e.pageX - container.offsetLeft;
+                            startY = e.pageY - container.offsetTop;
+                            scrollLeft = container.scrollLeft;
+                            scrollTop = container.scrollTop;
+                        });
+
+                        svg.addEventListener('mouseleave', () => {
+                            isDown = false;
+                        });
+
+                        svg.addEventListener('mouseup', () => {
+                            isDown = false;
+                        });
+
+                        svg.addEventListener('mousemove', (e) => {
+                            if (!isDown) return;
+                            e.preventDefault();
+                            const x = e.pageX - container.offsetLeft;
+                            const y = e.pageY - container.offsetTop;
+                            const walkX = (x - startX) * 2;
+                            const walkY = (y - startY) * 2;
+                            container.scrollLeft = scrollLeft - walkX;
+                            container.scrollTop = scrollTop - walkY;
+                        });
+                    }
+                }, 1000);
+            });
+        </script>
+    </body>
+    </html>
+    """
+
+    components.html(mermaid_html, height=600, scrolling=True)
+
     st.markdown("""
-    ```mermaid
-    graph TD
-        A[📝 Contenido Input] --> B[🔍 Content Format Detector]
-        B --> C{¿Formato Detectado?}
-        C -->|Reunión Diarizada| D[👥 Meeting Processor]
-        C -->|Contenido Lineal| E[📚 Simple Processor]
-        D --> F[📋 Meeting Output]
-        E --> G[📄 Educational Output]
-        F --> H[📥 Documento Final]
-        G --> H
-    ```
-    
     **Proceso detallado:**
-    
+
     1. **Análisis de Formato**: El sistema analiza automáticamente el contenido para detectar el tipo
     2. **Segmentación**: Se divide el contenido en segmentos manejables (300-1000 palabras)
     3. **Procesamiento**: Cada segmento se procesa con el agente especializado apropiado
