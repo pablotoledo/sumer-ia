@@ -52,6 +52,7 @@ streamlit = [
 ]
 
 [project.scripts]
+fastagent-cli = "fastagent_cli:main"
 fastagent-ui = "src.streamlit_interface.cli:main"
 fastagent-dashboard = "src.streamlit_interface.cli:main"
 fastagent-streamlit = "src.streamlit_interface.cli:main"
