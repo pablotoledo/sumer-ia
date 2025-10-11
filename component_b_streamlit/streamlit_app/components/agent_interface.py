@@ -30,21 +30,37 @@ class AgentInterface:
         """Inicializa los agentes FastAgent."""
         try:
             # Importar módulos FastAgent
-            from src.enhanced_agents import fast, meeting_fast, adaptive_segment_content
+            from src.enhanced_agents import fast, adaptive_segment_content
             from robust_main import RateLimitHandler
-            
+
             self._fast_agent = fast
-            self._meeting_agent = meeting_fast
+            # Use the same agent for both types for now
+            self._meeting_agent = fast
             self._adaptive_segment = adaptive_segment_content
+
+            # Obtener configuración de rate limiting
+            rate_config = self.config_manager.get_rate_limiting_config()
+            max_retries = rate_config.get('max_retries', 3)
+            base_delay = rate_config.get('retry_base_delay', 60)
+
             self._rate_limit_handler = RateLimitHandler(
-                max_retries=3,
-                base_delay=60
+                max_retries=max_retries,
+                base_delay=base_delay
             )
-            
+
+            print(f"   • Rate limit: {max_retries} retries, {base_delay}s base delay")
+
+            print(f"✅ Agents initialized successfully")
+            print(f"   • Fast agent: {self._fast_agent}")
+            print(f"   • Adaptive segment function: {self._adaptive_segment}")
+
             return True
-            
+
         except Exception as e:
             st.error(f"Error inicializando agentes: {e}")
+            print(f"❌ Error detallado: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     async def process_content(
@@ -52,87 +68,123 @@ class AgentInterface:
         content: str,
         documents: Optional[List[str]] = None,
         progress_callback=None,
-        agent_override: Optional[str] = None
+        agent_override: Optional[str] = None,
+        use_intelligent_segmentation: bool = True
     ) -> Dict[str, Any]:
         """
         Procesa contenido usando FastAgent.
-        
+
         Args:
             content: Texto STT a procesar
             documents: Lista de rutas a documentos adicionales
             progress_callback: Función para reportar progreso
             agent_override: Agente específico a usar (opcional)
-        
+            use_intelligent_segmentation: Si True, usa GPT-4.1 para segmentar inteligentemente
+
         Returns:
             Dict con resultado del procesamiento
         """
-        
+
         if not await self._initialize_agents():
             raise Exception("No se pudieron inicializar los agentes")
         
         try:
-            # Paso 1: Segmentación adaptativa
+            # PASO 1: Segmentación (Inteligente o Programática)
             if progress_callback:
-                progress_callback("Analizando formato del contenido...", 0.1)
-            
-            segments, recommended_agent = self._adaptive_segment(content)
-            
+                progress_callback("Analizando contenido para segmentación...", 0.1)
+
+            word_count = len(content.split())
+
+            # Decidir método de segmentación
+            if use_intelligent_segmentation and word_count > 3000:
+                # Usar segmentación AI para contenido grande
+                print(f"🧠 Using AI-powered intelligent segmentation ({word_count:,} words)")
+                enriched_segments, recommended_agent = await self._intelligent_segment_with_ai(content)
+                segmentation_method = 'intelligent_ai'
+            else:
+                # Usar método programático para contenido pequeño o si se desactiva AI
+                print(f"📐 Using programmatic segmentation ({word_count:,} words)")
+                segments, recommended_agent = self._adaptive_segment(content)
+                # Convert to enriched format
+                enriched_segments = [{'content': seg, 'metadata': {}} for seg in segments]
+                segmentation_method = 'programmatic'
+
+            # DEBUG: Log segmentation results
+            print(f"\n🔍 SEGMENTATION DEBUG:")
+            print(f"   • Number of segments: {len(enriched_segments)}")
+            print(f"   • Recommended agent: {recommended_agent}")
+            print(f"   • Method: {segmentation_method}")
+
             # Usar agent_override si se especifica
             if agent_override:
                 recommended_agent = agent_override
-            
+
             if progress_callback:
-                progress_callback(f"Usando agente: {recommended_agent}", 0.2)
-                progress_callback(f"Procesando {len(segments)} segmentos...", 0.3)
+                progress_callback(f"Segmentación completa: {len(enriched_segments)} segmentos", 0.2)
             
             # Paso 2: Configurar contexto multimodal
             multimodal_context = self._prepare_multimodal_context(documents)
             
-            # Paso 3: Procesamiento por segmentos con rate limiting
+            # PASO 3: Procesamiento por segmentos con CONTEXTO LIMPIO
             processed_segments = []
-            total_segments = len(segments)
-            
+            total_segments = len(enriched_segments)
+
             # Seleccionar el agente FastAgent apropiado
             if recommended_agent == "meeting_processor":
                 agent = self._meeting_agent
             else:
                 agent = self._fast_agent
-            
-            for i, segment in enumerate(segments):
+
+            for i, enriched_segment in enumerate(enriched_segments):
+                segment_content = enriched_segment['content']
+                segment_metadata = enriched_segment.get('metadata', {})
+
                 if progress_callback:
-                    progress = 0.3 + (0.6 * (i + 1) / total_segments)
-                    progress_callback(f"Procesando segmento {i + 1}/{total_segments}...", progress)
-                
-                # Procesar segmento con retry automático
+                    progress = 0.2 + (0.7 * (i + 1) / total_segments)
+                    topic = segment_metadata.get('topic', f'Segmento {i + 1}')
+                    progress_callback(f"Procesando: {topic[:50]}...", progress)
+
+                # IMPORTANTE: Cada iteración crea una NUEVA sesión = CONTEXTO LIMPIO
                 try:
-                    async with agent.run() as agent_instance:
-                        segment_context = f"""
-Segmento {i + 1} de {total_segments}:
+                    async with agent.run() as agent_instance:  # Nueva sesión aquí
+                        # Construir prompt enriquecido con metadata
+                        segment_prompt = self._build_segment_prompt(
+                            segment_content=segment_content,
+                            segment_number=i + 1,
+                            total_segments=total_segments,
+                            metadata=segment_metadata,
+                            multimodal_context=multimodal_context
+                        )
 
-{segment}
-
-{multimodal_context}
-"""
-                        
                         result = await self._rate_limit_handler.execute_with_retry(
                             agent_instance.simple_processor.send,
-                            segment_context
+                            segment_prompt
                         )
-                        
+
                         processed_segments.append({
                             'segment_number': i + 1,
-                            'original_content': segment,
+                            'original_content': segment_content,
                             'processed_content': result,
-                            'agent_used': recommended_agent
+                            'agent_used': recommended_agent,
+                            'metadata': segment_metadata
                         })
-                
+
+                        # Delay proactivo entre segmentos (excepto el último)
+                        if i < len(enriched_segments) - 1:
+                            delay = self._get_inter_segment_delay()
+                            if delay > 0:
+                                if progress_callback:
+                                    progress_callback(f"Esperando {delay}s antes del siguiente segmento...", current_progress)
+                                await asyncio.sleep(delay)
+
                 except Exception as e:
                     st.warning(f"Error procesando segmento {i + 1}: {e}")
                     processed_segments.append({
                         'segment_number': i + 1,
-                        'original_content': segment,
+                        'original_content': segment_content,
                         'processed_content': f"Error procesando segmento: {e}",
                         'agent_used': recommended_agent,
+                        'metadata': segment_metadata,
                         'error': True
                     })
             
@@ -157,7 +209,8 @@ Segmento {i + 1} de {total_segments}:
                 'total_segments': total_segments,
                 'retry_count': self._rate_limit_handler.retry_count,
                 'original_content': content,
-                'multimodal_files': documents or []
+                'multimodal_files': documents or [],
+                'segmentation_method': segmentation_method
             }
             
         except Exception as e:
@@ -191,60 +244,59 @@ Segmento {i + 1} de {total_segments}:
         original_content: str,
         documents: Optional[List[str]]
     ) -> str:
-        """Ensambla el documento final a partir de los segmentos procesados."""
-        
+        """
+        Ensambla el documento final en Markdown simple.
+        Cada segmento incluye su contenido Y sus preguntas juntos, sin duplicaciones.
+        """
+
         doc_parts = []
-        
+
         # Header del documento
-        doc_parts.append("# Documento Procesado - FastAgent")
-        doc_parts.append(f"**Generado**: {self._get_timestamp()}")
-        doc_parts.append(f"**Segmentos procesados**: {len(processed_segments)}")
-        
+        doc_parts.append("# Documento Procesado")
+        doc_parts.append(f"\n**Fecha**: {self._get_timestamp()}")
+        doc_parts.append(f"**Segmentos**: {len(processed_segments)}")
+
         if documents:
-            doc_parts.append(f"**Documentos adicionales**: {', '.join([Path(d).name for d in documents])}")
-        
+            doc_parts.append(f"**Documentos de referencia**: {', '.join([Path(d).name for d in documents])}")
+
         doc_parts.append("\n---\n")
-        
-        # Tabla de contenidos
-        doc_parts.append("## Tabla de Contenidos")
-        for segment in processed_segments:
-            if not segment.get('error', False):
-                # Extraer título del contenido procesado
-                title = self._extract_title(segment['processed_content'])
-                doc_parts.append(f"- [Segmento {segment['segment_number']}: {title}](#segmento-{segment['segment_number']})")
-        
-        doc_parts.append("- [Preguntas y Respuestas](#preguntas-y-respuestas)")
-        doc_parts.append("\n---\n")
-        
-        # Contenido principal
-        doc_parts.append("## Contenido Principal\n")
-        
+
+        # Procesar cada segmento (contenido + preguntas juntos)
         for segment in processed_segments:
             if segment.get('error', False):
-                doc_parts.append(f"### Segmento {segment['segment_number']}: Error\n")
-                doc_parts.append(f"❌ {segment['processed_content']}\n")
+                # Segmento con error
+                doc_parts.append(f"## ❌ Error en Segmento {segment['segment_number']}\n")
+                doc_parts.append(f"{segment['processed_content']}\n")
             else:
-                doc_parts.append(f"### Segmento {segment['segment_number']}\n")
-                doc_parts.append(segment['processed_content'])
+                # Extraer título del contenido procesado
+                title = self._extract_title(segment['processed_content'])
+                metadata = segment.get('metadata', {})
+
+                # Header del segmento
+                doc_parts.append(f"## {segment['segment_number']}. {title}\n")
+
+                # Mostrar metadata si existe (del segmentador inteligente)
+                if metadata.get('keywords'):
+                    keywords_text = ', '.join(metadata['keywords'][:5])
+                    doc_parts.append(f"*Palabras clave: {keywords_text}*\n")
+
+                # Contenido del segmento (SIN las preguntas, las extraeremos aparte)
+                content_without_qa = self._extract_content_without_qa(segment['processed_content'])
+                doc_parts.append(content_without_qa)
                 doc_parts.append("\n")
-        
-        # Sección Q&A (extraer de los segmentos procesados)
-        doc_parts.append("\n---\n")
-        doc_parts.append("## Preguntas y Respuestas\n")
-        
-        for segment in processed_segments:
-            if not segment.get('error', False):
+
+                # Preguntas del segmento como subsección
                 qa_content = self._extract_qa_content(segment['processed_content'])
                 if qa_content:
-                    title = self._extract_title(segment['processed_content'])
-                    doc_parts.append(f"### Segmento {segment['segment_number']}: {title}\n")
+                    doc_parts.append("### 📚 Preguntas y Respuestas\n")
                     doc_parts.append(qa_content)
                     doc_parts.append("\n")
-        
+
+                doc_parts.append("---\n")
+
         # Footer
-        doc_parts.append("\n---\n")
-        doc_parts.append("*Documento generado por FastAgent - Sistema Multi-Agente*")
-        
+        doc_parts.append("\n*Generado por FastAgent*")
+
         return "\n".join(doc_parts)
     
     def _extract_title(self, content: str) -> str:
@@ -258,26 +310,88 @@ Segmento {i + 1} de {total_segments}:
                 return line[:50] + "..." if len(line) > 50 else line
         return "Sin título"
     
+    def _extract_content_without_qa(self, content: str) -> str:
+        """Extrae el contenido principal SIN la sección de Q&A."""
+        lines = content.split('\n')
+        content_lines = []
+
+        # Buscar marcadores comunes de inicio de sección Q&A
+        qa_markers = [
+            'preguntas y respuestas',
+            'preguntas',
+            'q&a',
+            '## preguntas',
+            '### preguntas',
+            '---'
+        ]
+
+        for i, line in enumerate(lines):
+            line_lower = line.lower().strip()
+
+            # Si encontramos un marcador de Q&A, detenemos
+            if any(marker in line_lower for marker in qa_markers):
+                # Verificar si las siguientes líneas son realmente Q&A
+                if i + 1 < len(lines):
+                    next_lines = '\n'.join(lines[i:i+5]).lower()
+                    if 'pregunta' in next_lines or '¿' in next_lines or 'respuesta' in next_lines:
+                        break
+
+            content_lines.append(line)
+
+        return '\n'.join(content_lines).strip()
+
     def _extract_qa_content(self, content: str) -> str:
-        """Extrae la sección Q&A de un segmento procesado."""
+        """Extrae SOLO la sección Q&A de un segmento procesado."""
         lines = content.split('\n')
         qa_section = []
         in_qa_section = False
-        
+
+        # Marcadores de inicio de Q&A
+        qa_start_markers = [
+            'preguntas y respuestas',
+            'preguntas',
+            'q&a',
+            '## preguntas',
+            '### preguntas'
+        ]
+
         for line in lines:
-            if any(keyword in line.lower() for keyword in ['pregunta', 'respuesta', '¿', '?', 'q&a']):
+            line_lower = line.lower().strip()
+
+            # Detectar inicio de sección Q&A
+            if not in_qa_section and any(marker in line_lower for marker in qa_start_markers):
                 in_qa_section = True
-            
+                continue  # Saltar el header "Preguntas y Respuestas"
+
+            # Una vez dentro, capturar todo hasta encontrar separador o fin
             if in_qa_section:
+                # Detenerse en separadores de secciones
+                if line.strip() == '---' and len(qa_section) > 5:
+                    break
                 qa_section.append(line)
-        
-        return '\n'.join(qa_section) if qa_section else ""
+
+        return '\n'.join(qa_section).strip() if qa_section else ""
     
     def _get_timestamp(self) -> str:
         """Retorna timestamp formateado."""
         from datetime import datetime
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
+    def _get_inter_segment_delay(self) -> int:
+        """
+        Obtiene el delay configurado entre segmentos para evitar rate limits proactivamente.
+
+        Returns:
+            Delay en segundos (0 si no configurado)
+        """
+        try:
+            rate_config = self.config_manager.get_rate_limiting_config()
+            delay = rate_config.get('delay_between_requests', 0)
+            return int(delay)
+        except Exception as e:
+            print(f"⚠️ Error obteniendo delay entre requests: {e}")
+            return 0
+
     async def test_agent_connection(self, agent_name: str = "simple_processor") -> bool:
         """Prueba la conexión con un agente específico."""
         try:
@@ -323,26 +437,70 @@ Segmento {i + 1} de {total_segments}:
             except Exception as e:
                 st.warning(f"No se pudo eliminar archivo temporal {file_path}: {e}")
 
+    async def _intelligent_segment_with_ai(self, content: str) -> Tuple[List[Dict[str, Any]], str]:
+        """Wrapper para llamar a la función de segmentación inteligente."""
+        from src.enhanced_agents import adaptive_segment_content_v2
+        return await adaptive_segment_content_v2(content)
+
+    def _build_segment_prompt(
+        self,
+        segment_content: str,
+        segment_number: int,
+        total_segments: int,
+        metadata: Dict[str, Any],
+        multimodal_context: str
+    ) -> str:
+        """
+        Construye el prompt para procesar un segmento, incluyendo metadata útil.
+        """
+        prompt_parts = []
+
+        # Header con posición
+        prompt_parts.append(f"SEGMENTO {segment_number} de {total_segments}")
+
+        # Metadata si está disponible
+        if metadata:
+            has_metadata = any(k in metadata for k in ['topic', 'keywords', 'key_concepts', 'section_type'])
+            if has_metadata:
+                prompt_parts.append("\nMETADATA DEL SEGMENTO:")
+                if 'topic' in metadata:
+                    prompt_parts.append(f"• Tema principal: {metadata['topic']}")
+                if 'keywords' in metadata and metadata['keywords']:
+                    prompt_parts.append(f"• Palabras clave: {', '.join(metadata['keywords'][:5])}")
+                if 'key_concepts' in metadata and metadata['key_concepts']:
+                    prompt_parts.append(f"• Conceptos clave: {', '.join(metadata['key_concepts'][:3])}")
+                if 'section_type' in metadata:
+                    prompt_parts.append(f"• Tipo de sección: {metadata['section_type']}")
+
+        # Contenido del segmento
+        prompt_parts.append(f"\nCONTENIDO:\n{segment_content}")
+
+        # Contexto multimodal
+        if multimodal_context:
+            prompt_parts.append(f"\n{multimodal_context}")
+
+        return '\n'.join(prompt_parts)
+
 # Helper functions para Streamlit
 def run_async_in_streamlit(coroutine):
     """Ejecuta una coroutine asíncrona en Streamlit de forma simple."""
-    import concurrent.futures
-    import threading
+    import nest_asyncio
 
-    def run_in_thread():
-        # Crear un nuevo event loop para este hilo
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
-        try:
-            return new_loop.run_until_complete(coroutine)
-        finally:
-            new_loop.close()
-            asyncio.set_event_loop(None)
+    # Aplicar nest_asyncio para permitir event loops anidados
+    nest_asyncio.apply()
 
-    # Siempre ejecutar en un hilo separado para evitar conflictos
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(run_in_thread)
-        return future.result()
+    # Obtener o crear event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Ejecutar la coroutine en el event loop actual
+    return loop.run_until_complete(coroutine)
 
 def create_progress_callback():
     """Crea un callback de progreso para Streamlit."""

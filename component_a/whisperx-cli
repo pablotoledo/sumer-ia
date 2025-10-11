@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# WhisperX CLI Helper Script
+# Simplifies running the transcribe_cli.py script with uv
+
+set -e
+
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Load .env file if it exists
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
+fi
+
+# Run the CLI with uv
+exec uv run python "$SCRIPT_DIR/transcribe_cli.py" "$@"

@@ -26,10 +26,11 @@ class AgentInterface:
         """Inicializa los agentes FastAgent."""
         try:
             # Importar módulos FastAgent desde la estructura src/
-            from src.enhanced_agents import fast, meeting_fast, adaptive_segment_content
+            from src.agents.specialized_agents import fast as specialized_fast
+            from src.enhanced_agents import meeting_fast, adaptive_segment_content
             from robust_main import RateLimitHandler
             
-            self._fast_agent = fast
+            self._fast_agent = specialized_fast
             self._meeting_agent = meeting_fast
             self._adaptive_segment = adaptive_segment_content
             self._rate_limit_handler = RateLimitHandler(
@@ -110,10 +111,18 @@ Segmento {i + 1} de {total_segments}:
 {multimodal_context}
 """
                         
-                        result = await self._rate_limit_handler.execute_with_retry(
-                            agent_instance.simple_processor.send,
-                            segment_context
-                        )
+                        # Para agentes especializados, usar la cadena de procesamiento
+                        if recommended_agent == "simple_processor":
+                            result = await self._rate_limit_handler.execute_with_retry(
+                                agent_instance.content_pipeline.send,
+                                segment_context
+                            )
+                        else:
+                            # Para meeting_processor mantener comportamiento original
+                            result = await self._rate_limit_handler.execute_with_retry(
+                                agent_instance.simple_processor.send,
+                                segment_context
+                            )
                         
                         processed_segments.append({
                             'segment_number': i + 1,
@@ -167,19 +176,66 @@ Segmento {i + 1} de {total_segments}:
             }
     
     def _prepare_multimodal_context(self, documents: Optional[List[str]]) -> str:
-        """Prepara el contexto multimodal para los agentes."""
+        """Prepara el contexto multimodal funcional para los agentes."""
         if not documents:
             return ""
-        
-        context_parts = ["\n--- CONTEXTO MULTIMODAL ---"]
-        
-        for doc_path in documents:
-            doc_name = Path(doc_path).name
-            context_parts.append(f"• Documento disponible: {doc_name}")
-        
-        context_parts.append("--- FIN CONTEXTO MULTIMODAL ---\n")
-        
-        return "\n".join(context_parts)
+
+        try:
+            from src.utils.multimodal_context import MultimodalContextBuilder
+
+            # Crear builder de contexto multimodal
+            builder = MultimodalContextBuilder()
+
+            # Convertir rutas a objetos Path
+            doc_paths = [Path(doc) for doc in documents if doc]
+
+            # Validar documentos
+            validation = builder.validate_documents(doc_paths)
+
+            context_parts = ["\n--- CONTEXTO MULTIMODAL ---"]
+
+            # Agregar contenido de documentos válidos
+            for doc_path in validation["valid"]:
+                try:
+                    content = builder._extract_document_content(doc_path)
+                    if content and not content.startswith("[Error"):
+                        context_parts.extend([
+                            f"\n--- {doc_path.name} ---",
+                            content,
+                            ""
+                        ])
+                    else:
+                        context_parts.append(f"• {doc_path.name}: {content}")
+                except Exception as e:
+                    context_parts.append(f"• {doc_path.name}: Error extrayendo contenido - {e}")
+
+            # Reportar documentos con problemas
+            if validation["invalid"]:
+                context_parts.append(f"• Documentos con errores: {[p.name for p in validation['invalid']]}")
+
+            if validation["unsupported"]:
+                context_parts.append(f"• Tipos no soportados: {[p.name for p in validation['unsupported']]}")
+
+            if validation["missing"]:
+                context_parts.append(f"• Archivos no encontrados: {[p.name for p in validation['missing']]}")
+
+            context_parts.append("--- FIN CONTEXTO MULTIMODAL ---\n")
+
+            return "\n".join(context_parts)
+
+        except ImportError as e:
+            st.warning(f"No se pudo cargar el módulo de contexto multimodal: {e}")
+            # Fallback al comportamiento anterior
+            context_parts = ["\n--- CONTEXTO MULTIMODAL (MODO BÁSICO) ---"]
+            for doc_path in documents:
+                doc_name = Path(doc_path).name
+                context_parts.append(f"• Documento disponible: {doc_name}")
+            context_parts.append("--- FIN CONTEXTO MULTIMODAL ---\n")
+            return "\n".join(context_parts)
+
+        except Exception as e:
+            st.error(f"Error preparando contexto multimodal: {e}")
+            return "\n--- CONTEXTO MULTIMODAL: ERROR ---\n"
     
     def _assemble_final_document(
         self,
@@ -282,7 +338,7 @@ Segmento {i + 1} de {total_segments}:
             
             # Test básico con el agente
             async with self._fast_agent.run() as agent:
-                result = await agent.simple_processor.send("Test de conexión")
+                result = await agent.content_pipeline.send("Test de conexión")
                 return result is not None
                 
         except Exception as e:

@@ -1,0 +1,36 @@
+azure:
+  api_key: YOUR_AZURE_API_KEY_HERE
+  api_version: 2025-01-01-preview
+  azure_deployment: gpt-4.1
+  base_url: https://your-resource-name.cognitiveservices.azure.com/
+  max_retries: 8
+  retry_delay: 90
+  timeout: 180
+default_model: azure.gpt-4.1
+generic:
+  api_key: ollama
+  base_url: http://192.168.1.100:11434/v1
+logger:
+  level: info
+  progress_display: true
+  show_chat: true
+  show_tools: true
+  truncate_tools: true
+mcp:
+  servers:
+    fetch:
+      args:
+      - mcp-server-fetch
+      command: uvx
+    filesystem:
+      args:
+      - -y
+      - '@modelcontextprotocol/server-filesystem'
+      - .
+      command: npx
+rate_limiting:
+  backoff_factor: 3.0
+  delay_between_requests: 30
+  max_backoff: 600
+  max_tokens_per_request: 50000
+  requests_per_minute: 3

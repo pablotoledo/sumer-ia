@@ -25,6 +25,10 @@ dependencies = [
     "plotly>=5.17.0",
     "pandas>=2.0.0",
     "requests>=2.31.0",
+    "pytest-asyncio>=1.1.0",
+    "pypdf>=6.1.1",
+    "streamlit-mermaid>=0.3.0",
+    "nest-asyncio>=1.5.0",
 ]
 
 [project.optional-dependencies]
@@ -49,6 +53,7 @@ streamlit = [
 
 [project.scripts]
 fastagent-ui = "src.streamlit_interface.cli:main"
+fastagent-dashboard = "src.streamlit_interface.cli:main"
 fastagent-streamlit = "src.streamlit_interface.cli:main"
 
 [build-system]

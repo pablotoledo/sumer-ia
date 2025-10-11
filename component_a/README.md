@@ -132,11 +132,13 @@ pip install streamlit librosa transformers pyannote.audio speechbrain
 
 ## 🎯 Quick Start
 
+### Streamlit Web Interface
+
 1. **Start the application** (with 1GB upload limit):
    ```bash
    # Option 1: Using the provided script (recommended)
    uv run python run_app.py
-   
+
    # Option 2: Direct streamlit command with parameters
    cd src && uv run streamlit run app.py --server.maxUploadSize 1024
    ```
@@ -154,6 +156,59 @@ pip install streamlit librosa transformers pyannote.audio speechbrain
    - Accept user agreements for diarization models
 
 5. **Process and download**: Click "Start Transcription" and download results
+
+### Command-Line Interface (CLI)
+
+For batch processing or automated workflows, use the CLI:
+
+```bash
+# Basic transcription
+python transcribe_cli.py audio.mp3
+
+# With speaker diarization
+python transcribe_cli.py audio.mp3 \
+  --enable-diarization \
+  --min-speakers 2 \
+  --max-speakers 4 \
+  --hf-token hf_xxxxx
+
+# Spanish audio with custom output
+python transcribe_cli.py reunion.mp3 \
+  --language es \
+  --model large-v2 \
+  --formats json,srt,vtt \
+  --output-dir ./transcription
+
+# Using helper script (auto-loads .env)
+./whisperx-cli audio.mp3
+```
+
+#### CLI Configuration Priority
+
+Settings are applied in order (highest to lowest):
+1. Command-line arguments
+2. Environment variables
+3. Default values
+
+#### Environment Variables Setup
+
+```bash
+# Create .env file from template
+cp .env.example .env
+
+# Edit with your settings
+cat > .env << EOF
+WHISPERX_MODEL=small
+WHISPERX_DEVICE=cuda
+WHISPERX_FORMATS=json,srt
+HF_TOKEN=hf_xxxxxxxxxxxxx
+EOF
+
+# Run with environment configuration
+python transcribe_cli.py audio.mp3
+```
+
+See `.env.example` for all available environment variables.
 
 ## ⚙️ Configuration
 
@@ -376,19 +431,100 @@ print(f"Current memory: {usage['total_gb']:.2f}GB")
 memory_manager.full_cleanup()
 ```
 
+## 💻 CLI Reference
+
+### Available Arguments
+
+```bash
+python transcribe_cli.py --help
+```
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `input` | Input audio file (required) | `audio.mp3` |
+| `-o, --output-dir` | Output directory | `--output-dir ./results` |
+| `-f, --formats` | Output formats (json,srt,vtt,txt) | `--formats json,srt` |
+| `-m, --model` | Model size | `--model large-v2` |
+| `-l, --language` | Language code | `--language es` |
+| `-p, --preset` | Config preset | `--preset balanced` |
+| `-d, --device` | Device (auto,cuda,mps,cpu) | `--device cuda` |
+| `-b, --batch-size` | Batch size | `--batch-size 32` |
+| `-c, --compute-type` | Precision (float16,int8,float32) | `--compute-type float16` |
+| `--enable-diarization` | Enable speaker detection | `--enable-diarization` |
+| `--min-speakers` | Minimum speakers | `--min-speakers 2` |
+| `--max-speakers` | Maximum speakers | `--max-speakers 5` |
+| `--hf-token` | HuggingFace token | `--hf-token hf_xxx` |
+| `--no-word-timestamps` | Disable word timestamps | flag |
+| `--no-confidence` | Disable confidence scores | flag |
+| `-v, --verbose` | Verbose output | flag |
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `WHISPERX_MODEL` | Model name | `small` |
+| `WHISPERX_DEVICE` | Processing device | `cuda` |
+| `WHISPERX_LANGUAGE` | Language code | `es` |
+| `WHISPERX_BATCH_SIZE` | Batch size | `16` |
+| `WHISPERX_COMPUTE_TYPE` | Compute precision | `float16` |
+| `WHISPERX_OUTPUT_DIR` | Output directory | `/path/to/output` |
+| `WHISPERX_FORMATS` | Output formats | `json,srt,vtt` |
+| `HF_TOKEN` | HuggingFace token | `hf_xxxxx` |
+
+### CLI Examples
+
+```bash
+# 1. Quick transcription
+python transcribe_cli.py interview.mp3
+
+# 2. High-quality with GPU
+python transcribe_cli.py lecture.mp3 \
+  --model large-v2 \
+  --device cuda \
+  --compute-type float16
+
+# 3. Meeting with 3-5 speakers (Spanish)
+python transcribe_cli.py reunion.mp3 \
+  --language es \
+  --enable-diarization \
+  --min-speakers 3 \
+  --max-speakers 5 \
+  --hf-token hf_xxxxx
+
+# 4. Long podcast (3+ hours)
+python transcribe_cli.py podcast.mp3 \
+  --preset long_audio \
+  --formats json,srt
+
+# 5. Batch processing script
+for audio in *.mp3; do
+  python transcribe_cli.py "$audio" \
+    --enable-diarization \
+    --output-dir "./out/${audio%.mp3}"
+done
+```
+
 ## 🧪 Testing
 
 Run the test suite:
 ```bash
-# Run all tests
-uv run pytest
+# Run all tests (77 tests)
+uv run pytest -v
 
 # Run with coverage
 uv run pytest --cov=src --cov-report=html
 
-# Run specific test file
-uv run pytest tests/test_processor.py
+# Run specific test files
+uv run pytest tests/test_cli.py -v           # CLI tests (51 tests)
+uv run pytest tests/test_config.py -v        # Config tests (13 tests)
+uv run pytest tests/test_format_converters.py -v  # Converter tests (13 tests)
 ```
+
+**Test Coverage:**
+- ✅ 77 tests total (100% passing)
+- ✅ CLI: 51 tests (argument parsing, env vars, validation)
+- ✅ Config: 13 tests (hardware detection, presets)
+- ✅ Format Converters: 13 tests (JSON, SRT, VTT, TXT)
 
 ## 📝 License
 

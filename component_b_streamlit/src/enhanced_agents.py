@@ -7,7 +7,7 @@ Enhanced version that combines content processing with intelligent Q&A generatio
 
 from pathlib import Path
 from mcp_agent.core.fastagent import FastAgent
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 import yaml
 from .intelligent_segmenter import IntelligentSegmenter
 from .content_format_detector import analyze_content_format, ContentFormat
@@ -88,58 +88,250 @@ def adaptive_segment_content(content: str) -> Tuple[List[str], str]:
     return segments, recommended_agent
 
 
+async def adaptive_segment_content_v2(content: str) -> Tuple[List[Dict[str, Any]], str]:
+    """
+    Use GPT-4.1 to intelligently segment content based on semantic analysis.
+    Returns (segment_metadata_list, recommended_agent) tuple.
+
+    This is the new AI-powered segmentation that replaces programmatic division.
+    Each segment includes rich metadata for better processing.
+    """
+    import json
+
+    words = content.split()
+    total_words = len(words)
+
+    print(f"\n🧠 INTELLIGENT SEGMENTATION (GPT-4.1)")
+    print(f"   • Total words: {total_words:,}")
+    print(f"   • Analyzing content for optimal segmentation...")
+
+    try:
+        # Call the intelligent_segmenter agent
+        async with fast.run() as agent_instance:
+            # Send the full content for analysis
+            segmentation_prompt = f"""Analyze and segment the following content:
+
+CONTENT ({total_words} words):
+{content}
+
+Provide a JSON segmentation plan following the specified format."""
+
+            result_json = await agent_instance.intelligent_segmenter.send(segmentation_prompt)
+
+        # Parse the JSON response
+        # Try to extract JSON if there's any surrounding text
+        result_clean = result_json.strip()
+
+        # Find JSON bounds if wrapped in markdown code blocks
+        if '```json' in result_clean:
+            start = result_clean.find('```json') + 7
+            end = result_clean.find('```', start)
+            result_clean = result_clean[start:end].strip()
+        elif '```' in result_clean:
+            start = result_clean.find('```') + 3
+            end = result_clean.find('```', start)
+            result_clean = result_clean[start:end].strip()
+
+        segmentation_plan = json.loads(result_clean)
+
+        # Validate the segmentation plan
+        segments_metadata = segmentation_plan.get('segments', [])
+        recommended_agent = segmentation_plan.get('recommended_agent', 'simple_processor')
+
+        if not segments_metadata:
+            raise ValueError("No segments returned in plan")
+
+        print(f"   ✅ Segments identified: {len(segments_metadata)}")
+        print(f"   • Format detected: {segmentation_plan.get('format_detected', 'unknown')}")
+        print(f"   • Recommended agent: {recommended_agent}")
+
+        # Extract actual text for each segment
+        enriched_segments = []
+        for seg_meta in segments_metadata:
+            start = seg_meta['start_word']
+            end = seg_meta['end_word']
+
+            segment_words = words[start:end]
+            segment_text = ' '.join(segment_words)
+
+            # Enrich with metadata
+            enriched_segments.append({
+                'content': segment_text,
+                'metadata': seg_meta
+            })
+
+            print(f"   • Segment {seg_meta['id']}: {seg_meta['word_count']} words - {seg_meta['topic'][:60]}...")
+
+        return enriched_segments, recommended_agent
+
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"⚠️  AI segmentation failed: {e}")
+        print(f"   Falling back to programmatic segmentation...")
+
+        # Fallback to programmatic method
+        segments = intelligent_segment_content(content)
+
+        # Convert to enriched format
+        enriched_segments = []
+        for i, seg in enumerate(segments, 1):
+            enriched_segments.append({
+                'content': seg,
+                'metadata': {
+                    'id': i,
+                    'topic': f'Segment {i}',
+                    'section_type': 'main_content'
+                }
+            })
+
+        # Determine agent from content format
+        from .content_format_detector import analyze_content_format
+        format_result = analyze_content_format(content)
+        recommended_agent = "meeting_processor" if "meeting" in format_result.format_type.value.lower() else "simple_processor"
+
+        return enriched_segments, recommended_agent
+
+
 def intelligent_segment_content(content: str) -> List[str]:
     """
     Segment content using intelligent programmatic methods (NO LLM).
     Guarantees 100% content preservation.
+    Optimized for GPT-4.1 with 1M token context window.
+
+    GPT-4.1 can handle up to 1M input tokens (~750K words), but we segment
+    for better quality, parallel processing, and cost optimization:
+    - Smaller segments = better focus and quality
+    - Allows retry of individual segments on failure
+    - Better progress tracking
+    - Optimal size: 2000-3000 words per segment (~2700-4000 tokens)
     """
-    segmenter = IntelligentSegmenter(target_segment_size=1200, max_segments=20)
-    
-    try:
-        segments = segmenter.create_semantic_segments(content)
-        
-        # Convert to simple string list format expected by fast-agent
-        segment_texts = []
-        for i, segment in enumerate(segments, 1):
-            segment_text = f"[SEGMENT {i}]\n{segment.content}\n---SEGMENT---"
-            segment_texts.append(segment_text)
-        
-        # Verification: Check total word count preservation
-        original_words = len(content.split())
-        total_segment_words = sum(len(seg.content.split()) for seg in segments)
-        
-        retention_rate = (total_segment_words / original_words) * 100
-        print(f"🔍 Segmentation: {original_words} → {total_segment_words} words ({retention_rate:.1f}% retention)")
-        
-        return segment_texts
-        
-    except Exception as e:
-        print(f"⚠️ Intelligent segmenter failed: {e}")
-        # Fallback: Simple paragraph-based segmentation
-        paragraphs = content.split('\n\n')
-        segments = []
-        current_segment = []
-        current_word_count = 0
-        
-        for para in paragraphs:
-            para_words = len(para.split())
-            if current_word_count + para_words > 1500 and current_segment:
-                segments.append('\n\n'.join(current_segment))
-                current_segment = [para]
-                current_word_count = para_words
-            else:
-                current_segment.append(para)
-                current_word_count += para_words
-        
-        if current_segment:
-            segments.append('\n\n'.join(current_segment))
-        
-        # Format for fast-agent
-        formatted_segments = []
-        for i, seg in enumerate(segments, 1):
-            formatted_segments.append(f"[SEGMENT {i}]\n{seg}\n---SEGMENT---")
-        
-        return formatted_segments
+    # GPT-4.1 optimized sizing (can handle much more, but this is optimal)
+    TARGET_WORDS_PER_SEGMENT = 2500  # ~3300 tokens - sweet spot for quality
+    MIN_WORDS_PER_SEGMENT = 1000     # Minimum to maintain context
+    MAX_WORDS_PER_SEGMENT = 4000     # Maximum to avoid quality degradation
+
+    words = content.split()
+    total_words = len(words)
+
+    print(f"🔍 Segmentation starting (GPT-4.1 optimized):")
+    print(f"   • Total words: {total_words:,}")
+    print(f"   • Target words per segment: {TARGET_WORDS_PER_SEGMENT:,}")
+    print(f"   • Estimated tokens per segment: ~{int(TARGET_WORDS_PER_SEGMENT * 1.3):,}")
+
+    # If content is small enough, return as single segment
+    if total_words <= TARGET_WORDS_PER_SEGMENT:
+        print(f"✅ Content fits in single segment")
+        return [f"[SEGMENT 1]\n{content}\n---SEGMENT---"]
+
+    # Calculate number of segments needed
+    num_segments = max(2, (total_words + TARGET_WORDS_PER_SEGMENT - 1) // TARGET_WORDS_PER_SEGMENT)
+    words_per_segment = total_words // num_segments
+
+    print(f"   • Number of segments: {num_segments}")
+    print(f"   • Approximate words per segment: {words_per_segment}")
+
+    segments = []
+    start_idx = 0
+
+    for i in range(num_segments):
+        # Calculate end index for this segment
+        if i == num_segments - 1:
+            # Last segment gets all remaining words
+            end_idx = total_words
+        else:
+            # Try to find a good break point near the target
+            target_end = start_idx + words_per_segment
+
+            # Look for sentence boundaries (. ! ?) within a window
+            search_start = max(start_idx, target_end - 100)
+            search_end = min(total_words, target_end + 100)
+
+            # Find the best sentence break
+            best_break = target_end
+            for j in range(search_start, search_end):
+                word = words[j].strip()
+                if word.endswith('.') or word.endswith('!') or word.endswith('?'):
+                    if abs(j - target_end) < abs(best_break - target_end):
+                        best_break = j + 1
+
+            end_idx = best_break
+
+        # Extract segment
+        segment_words = words[start_idx:end_idx]
+        segment_text = ' '.join(segment_words)
+
+        # Format segment
+        formatted_segment = f"[SEGMENT {i + 1}]\n{segment_text}\n---SEGMENT---"
+        segments.append(formatted_segment)
+
+        print(f"   • Segment {i + 1}: {len(segment_words)} words")
+
+        start_idx = end_idx
+
+    # Verification
+    total_segment_words = sum(len(seg.split()) for seg in segments)
+    retention_rate = (total_segment_words / total_words) * 100
+    print(f"✅ Segmentation complete: {total_words:,} → {total_segment_words:,} words ({retention_rate:.1f}% retention)")
+    print(f"   • Created {len(segments)} segments")
+
+    return segments
+
+
+# ===== INTELLIGENT SEGMENTATION AGENT =====
+
+@fast.agent(
+    name="intelligent_segmenter",
+    model=DEFAULT_MODEL,
+    instruction="""You are an expert content analyzer specializing in identifying optimal segmentation points for educational and technical content.
+
+TASK: Analyze the provided content and determine the best way to divide it into semantically coherent segments.
+
+REQUIREMENTS:
+1. Each segment should be ~2500 words (range: 2000-3000 words acceptable)
+2. Break at natural topic transitions, NOT mid-concept or mid-explanation
+3. Identify the main topic/theme of each segment
+4. Extract key concepts and keywords for each segment
+5. Classify segment type: introduction, main_content, example, conclusion, transition
+
+OUTPUT FORMAT (MUST be valid JSON):
+{
+  "total_words": <int>,
+  "recommended_segments": <int>,
+  "segments": [
+    {
+      "id": <int>,
+      "start_word": <int>,
+      "end_word": <int>,
+      "word_count": <int>,
+      "topic": "<concise topic description in Spanish>",
+      "keywords": ["<keyword1>", "<keyword2>", ...],
+      "section_type": "<introduction|main_content|example|conclusion|transition>",
+      "key_concepts": ["<concept1>", "<concept2>", ...],
+      "transition_type": "<natural_break|topic_change|speaker_change|section_end>"
+    }
+  ],
+  "format_detected": "<educational_linear|meeting_dialogue|technical_document>",
+  "recommended_agent": "<simple_processor|meeting_processor>"
+}
+
+CRITICAL RULES:
+- Ensure start_word and end_word cover ALL content with NO gaps or overlaps
+- The last segment's end_word MUST equal total_words exactly
+- Avoid segments smaller than 1500 words unless absolutely necessary
+- Prefer clean breaks at paragraph or major sentence boundaries
+- If content has clear section markers (headers, "vamos a hablar de", "ahora pasemos a"), USE them as break points
+- For Spanish educational content, detect transitions like "entonces", "ahora bien", "por otro lado", "en cuanto a"
+- Respond ONLY with the JSON, no additional text
+
+QUALITY CHECKLIST before responding:
+✓ All words accounted for (no gaps)
+✓ No overlapping segments
+✓ Reasonable segment sizes (2000-3000 words)
+✓ Natural topic boundaries
+✓ Valid JSON syntax
+"""
+)
+def intelligent_segmenter():
+    pass
 
 
 @fast.agent(
