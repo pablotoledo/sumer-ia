@@ -4,7 +4,15 @@
       "Bash(git checkout:*)",
       "Bash(uv pip install:*)",
       "Bash(uv add:*)",
-      "Bash(uv run pytest:*)"
+      "Bash(uv run pytest:*)",
+      "Bash(tree:*)",
+      "Read(//home/pablo/sumer-ia/component_a/**)",
+      "Read(//home/pablo/sumer-ia/component_a/src/**)",
+      "Bash(mkdir:*)",
+      "Bash(uv run:*)",
+      "Bash(./fastagent-cli --version)",
+      "Bash(dos2unix:*)",
+      "Bash(./fastagent-cli:*)"
     ],
     "deny": [],
     "ask": []
