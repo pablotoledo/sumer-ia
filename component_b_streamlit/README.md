@@ -126,16 +126,14 @@ graph LR
 ## 🖥️ Interfaz Web
 
 ### Páginas disponibles:
-- **🏠 Dashboard**: Estado del sistema y acceso rápido
-- **⚙️ Configuración**: Gestión de proveedores LLM (Azure, Ollama, OpenAI, Anthropic)
-- **📝 Procesamiento**: Upload y procesamiento de archivos con progreso visual
-- **🤖 Agentes**: Gestión de prompts, testing y configuración avanzada
+- **🏠 Inicio**: Procesamiento rápido de transcripciones
+- **⚙️ Configuración**: Gestión de proveedores LLM (Básica/Avanzada/Experto)
 
 ### Flujo de uso:
 1. **Configurar** proveedor LLM en la página de Configuración
-2. **Subir** transcripción en la página de Procesamiento
+2. **Pegar/subir** transcripción en la página de Inicio
 3. **Procesar** con visualización en tiempo real
-4. **Descargar** resultados en TXT o MD
+4. **Descargar** resultados en Markdown
 
 ## 🧠 Segmentación Inteligente con GPT-4.1
 
@@ -220,11 +218,8 @@ rate_limiting:
 # Interfaz web principal
 fastagent-ui
 
-# Dashboard alternativo
-fastagent-dashboard
-
 # Procesamiento por línea de comandos
-uv run python robust_main.py --input archivo.txt --output resultado.md
+uv run python scripts/cli.py --input archivo.txt --output resultado.md
 ```
 
 ## 🧪 Testing
@@ -233,8 +228,8 @@ uv run python robust_main.py --input archivo.txt --output resultado.md
 # Ejecutar todos los tests
 uv run pytest tests/ -v
 
-# Test específico de Streamlit
-uv run python test_streamlit_integration.py
+# Test de integración Streamlit
+uv run python tests/integration/test_streamlit_integration.py
 ```
 
 ## 📊 Características Técnicas
@@ -261,9 +256,15 @@ El sistema ahora incluye **prevención automática**, pero si aún así ocurren:
    - Más reintentos = más tolerancia a errores
 3. **Revisar métricas** después de procesar
    - Si "Reintentos por rate limit" > 3, aumentar delays
-4. Ver `RATE_LIMIT_IMPROVEMENTS.md` para configuración detallada por tier
+4. Ver `docs/history/RATE_LIMIT_IMPROVEMENTS.md` para configuración detallada por tier
 
 ### Problemas de dependencias
 ```bash
 uv sync --reinstall
 ```
+
+## 📚 Documentación
+
+- [Guía de Inicio Rápido](docs/QUICKSTART.md)
+- [Configuración Detallada](docs/CONFIGURATION.md)
+- [Funciones Avanzadas](docs/ADVANCED.md)

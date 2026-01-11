@@ -3,7 +3,7 @@
 FastAgent Streamlit Interface
 ============================
 
-Dashboard principal - Página de inicio con estado del sistema.
+Página principal - Redirige a Inicio y muestra estado compacto en sidebar.
 """
 
 import streamlit as st
@@ -17,12 +17,11 @@ sys.path.append(str(parent_dir))
 sys.path.append(str(current_dir))
 
 from components.config_manager import ConfigManager
-from components.ui_components import (
-    setup_page_config, show_sidebar, show_config_status
-)
+from components.ui_components import setup_page_config, show_sidebar
+
 
 def main():
-    """Dashboard principal."""
+    """Página principal - Redirige a Inicio."""
     
     setup_page_config()
     
@@ -34,162 +33,47 @@ def main():
     
     show_sidebar()
     
-    st.title("📊 Dashboard FastAgent")
+    # Mostrar estado y redirigir
+    st.title("🚀 FastAgent")
+    st.caption("Sistema de procesamiento de transcripciones con IA")
     
-    # Estado general del sistema
-    show_system_status(config_manager)
+    # Estado del sistema
+    validation = config_manager.validate_config()
+    
+    if all(validation.values()):
+        st.success("✅ **Sistema configurado y listo**")
+        st.info("👆 Usa el menú lateral para navegar a **🏠 Inicio** y procesar tu contenido.")
+    else:
+        st.warning("⚠️ **Sistema no configurado**")
+        st.info("👆 Ve a **⚙️ Configuración** en el menú lateral para configurar el sistema.")
     
     st.markdown("---")
     
-    # Información del sistema y acciones rápidas
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        show_system_info(config_manager)
-
-    with col2:
-        show_quick_actions(config_manager)
-
-def show_system_status(config_manager):
-    """Muestra el estado general del sistema."""
-    
-    st.subheader("🔧 Estado del Sistema")
-    
-    validation = config_manager.validate_config()
-    
-    # Indicadores de estado
-    col1, col2, col3, col4 = st.columns(4)
+    # Quick navigation
+    col1, col2 = st.columns(2)
     
     with col1:
-        if validation['has_provider']:
-            st.success("✅ Proveedor LLM")
-        else:
-            st.error("❌ Sin Proveedor")
+        if st.button("🏠 Ir a Inicio", type="primary", use_container_width=True):
+            st.switch_page("pages/0_inicio.py")
     
     with col2:
-        if validation['valid_model']:
-            st.success("✅ Modelo Válido")
-        else:
-            st.warning("⚠️ Modelo No Configurado")
+        if st.button("⚙️ Configurar", use_container_width=True):
+            st.switch_page("pages/1_configuracion.py")
     
-    with col3:
-        if validation['rate_limiting_ok']:
-            st.success("✅ Rate Limiting")
-        else:
-            st.warning("⚠️ Rate Limiting")
-    
-    with col4:
-        overall_status = all(validation.values())
-        if overall_status:
-            st.success("✅ Sistema Listo")
-        else:
-            st.error("❌ Configuración Incompleta")
-    
-    # Proveedores configurados
-    providers = []
-    for provider in ['azure', 'generic', 'openai', 'anthropic']:
-        if config_manager.is_provider_configured(provider):
-            providers.append(provider.title())
-    
-    if providers:
-        st.info(f"🔗 **Proveedores activos**: {', '.join(providers)}")
-    else:
-        st.warning("⚠️ No hay proveedores LLM configurados")
-    
-    # Modelo por defecto
-    default_model = config_manager.get_default_model()
-    st.info(f"🎯 **Modelo por defecto**: `{default_model}`")
-
-
-def show_system_info(config_manager):
-    """Muestra información del sistema."""
-    
-    st.subheader("ℹ️ Información del Sistema")
-    
-    config = config_manager.get_config()
-    rate_config = config_manager.get_rate_limiting_config()
-    
-    # Información de configuración
-    info_data = {
-        "🔧 Configuración": {
-            "Requests/min": rate_config.get('requests_per_minute', 'No configurado'),
-            "Delay entre requests": f"{rate_config.get('delay_between_requests', 0)}s",
-            "Max tokens/request": f"{rate_config.get('max_tokens_per_request', 0):,}",
-            "Factor de backoff": rate_config.get('backoff_factor', 'No configurado')
-        },
-        "🎯 Agentes": {
-            "Disponibles": "simple_processor, meeting_processor",
-            "Por defecto": "Auto-detección",
-            "Q&A": "Habilitado",
-            "Multimodal": "Soportado"
-        }
-    }
-    
-    for category, items in info_data.items():
-        with st.expander(category):
-            for key, value in items.items():
-                st.write(f"**{key}**: {value}")
-    
-    # Estado de los servidores MCP
-    st.subheader("🔗 Servidores MCP")
-    
-    mcp_servers = config.get('mcp', {}).get('servers', {})
-    
-    if mcp_servers:
-        for server_name, server_config in mcp_servers.items():
-            command = server_config.get('command', 'No especificado')
-            st.write(f"**{server_name}**: `{command}`")
-    else:
-        st.info("No hay servidores MCP configurados")
-
-
-def show_quick_actions(config_manager):
-    """Muestra acciones rápidas."""
-    
-    st.subheader("⚡ Acciones Rápidas")
-    
-    # Verificar estado para habilitar/deshabilitar acciones
-    validation = config_manager.validate_config()
-    is_ready = all(validation.values())
-    
-    # Acción: Ir a procesamiento
-    if st.button("📝 Procesar Contenido", use_container_width=True, disabled=not is_ready):
-        st.switch_page("pages/2_📝_Procesamiento.py")
-
-    if not is_ready:
-        st.caption("⚠️ Completa la configuración primero")
-
-    # Acción: Configurar sistema
-    if st.button("⚙️ Configurar Sistema", use_container_width=True):
-        st.switch_page("pages/1_⚙️_Configuración.py")
-
-    # Acción: Ver agentes
-    if st.button("🤖 Gestionar Agentes", use_container_width=True):
-        st.switch_page("pages/3_🤖_Agentes.py")
-    
+    # Info
     st.markdown("---")
-    
-    # Enlaces útiles
-    st.subheader("🔗 Enlaces Útiles")
-    
     st.markdown("""
-    - [📚 Documentación FastAgent](https://fast-agent.ai/)
-    - [🐙 Repositorio GitHub](https://github.com/evalstate/fast-agent)
-    - [❓ Reportar Issue](https://github.com/evalstate/fast-agent/issues)
-    - [💬 Discusiones](https://github.com/evalstate/fast-agent/discussions)
-    """)
+    ### 📚 Guía Rápida
     
-    # Tips de uso
-    with st.expander("💡 Tips de Uso"):
-        st.markdown("""
-        **Para mejores resultados:**
-        
-        1. **Configura Azure OpenAI** para mejor calidad en español
-        2. **Usa auto-detección** para seleccionar el agente apropiado
-        3. **Incluye documentos adicionales** para contexto enriquecido
-        4. **Ajusta rate limiting** según tu plan de Azure
-        5. **Revisa los logs** si encuentras errores 429
-        """)
+    1. **Configurar**: Añade tu API key en ⚙️ Configuración
+    2. **Procesar**: Pega o sube tu transcripción en 🏠 Inicio
+    3. **Descargar**: Obtén tu documento procesado en Markdown
+    
+    ### 📖 Documentación
+    
+    - [Guía de Inicio Rápido](docs/QUICKSTART.md)
+    - [Configuración Detallada](docs/CONFIGURATION.md)
+    """)
 
 
 if __name__ == "__main__":

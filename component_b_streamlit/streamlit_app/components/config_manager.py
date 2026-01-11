@@ -15,6 +15,49 @@ import json
 class ConfigManager:
     """Gestor centralizado de configuración para FastAgent."""
     
+    # Presets de configuración predefinidos
+    PRESETS = {
+        'basic_azure': {
+            'name': 'Básico - Azure OpenAI',
+            'description': 'Para usuarios con acceso a Azure OpenAI',
+            'default_model': 'azure.gpt-4.1',
+            'rate_limiting': {
+                'max_tokens_per_request': 50000,
+                'requests_per_minute': 3,
+                'max_retries': 3,
+                'retry_base_delay': 60,
+                'delay_between_requests': 30
+            }
+        },
+        'local_ollama': {
+            'name': 'Local - Ollama',
+            'description': 'Para usar modelos locales sin API keys',
+            'default_model': 'generic.llama3.1',
+            'rate_limiting': {
+                'max_tokens_per_request': 100000,
+                'requests_per_minute': 60,
+                'max_retries': 2,
+                'retry_base_delay': 5,
+                'delay_between_requests': 0
+            },
+            'generic': {
+                'api_key': 'ollama',
+                'base_url': 'http://localhost:11434/v1'
+            }
+        },
+        'development': {
+            'name': 'Desarrollo',
+            'description': 'Para desarrolladores y debugging',
+            'logger': {
+                'progress_display': True,
+                'show_chat': True,
+                'show_tools': True,
+                'truncate_tools': False,
+                'level': 'debug'
+            }
+        }
+    }
+    
     def __init__(self):
         self.config_path = Path("fastagent.config.yaml")
         self.example_config_path = Path("fastagent.config.yaml.example")
@@ -234,3 +277,73 @@ FORMAT: Create structured output with clear sections for decisions, actions, and
         """Resetea la configuración a valores por defecto."""
         self._config = self._get_default_config()
         self._save_config()
+    
+    def get_available_presets(self) -> Dict[str, Dict[str, str]]:
+        """Retorna lista de presets disponibles con nombre y descripción."""
+        return {
+            key: {'name': preset['name'], 'description': preset['description']}
+            for key, preset in self.PRESETS.items()
+        }
+    
+    def apply_preset(self, preset_name: str, user_inputs: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Aplica un preset de configuración.
+        
+        Args:
+            preset_name: Nombre del preset ('basic_azure', 'local_ollama', 'development')
+            user_inputs: Diccionario con inputs del usuario (api_key, base_url, etc.)
+        
+        Returns:
+            True si el preset se aplicó correctamente
+        """
+        if preset_name not in self.PRESETS:
+            return False
+        
+        preset = self.PRESETS[preset_name].copy()
+        
+        # Remover campos de metadata
+        preset.pop('name', None)
+        preset.pop('description', None)
+        
+        # Aplicar el preset
+        self._deep_update(self._config, preset)
+        
+        # Aplicar inputs del usuario si se proporcionan
+        if user_inputs:
+            self._deep_update(self._config, user_inputs)
+        
+        self._save_config()
+        return True
+    
+    def get_config_for_ui_level(self, level: str) -> Dict[str, Any]:
+        """
+        Retorna configuración filtrada según nivel de UI.
+        
+        Args:
+            level: 'basic' | 'advanced' | 'expert'
+        
+        Returns:
+            Diccionario con configuración filtrada para el nivel especificado
+        """
+        config = self.get_config()
+        
+        if level == 'basic':
+            # Solo mostrar proveedor activo y modelo
+            return {
+                'default_model': config.get('default_model'),
+                'has_azure': self.is_provider_configured('azure'),
+                'has_generic': self.is_provider_configured('generic')
+            }
+        elif level == 'advanced':
+            # Mostrar rate limiting y proveedores
+            return {
+                'default_model': config.get('default_model'),
+                'rate_limiting': config.get('rate_limiting', {}),
+                'providers': {
+                    p: self.is_provider_configured(p) 
+                    for p in ['azure', 'generic', 'openai', 'anthropic']
+                }
+            }
+        else:  # expert
+            # Mostrar todo
+            return config
