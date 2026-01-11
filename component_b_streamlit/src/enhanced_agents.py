@@ -88,13 +88,17 @@ def adaptive_segment_content(content: str) -> Tuple[List[str], str]:
     return segments, recommended_agent
 
 
-async def adaptive_segment_content_v2(content: str) -> Tuple[List[Dict[str, Any]], str]:
+async def adaptive_segment_content_v2(content: str, agent_instance=None) -> Tuple[List[Dict[str, Any]], str]:
     """
     Use GPT-4.1 to intelligently segment content based on semantic analysis.
     Returns (segment_metadata_list, recommended_agent) tuple.
 
     This is the new AI-powered segmentation that replaces programmatic division.
     Each segment includes rich metadata for better processing.
+
+    Args:
+        content: Content to segment
+        agent_instance: Optional pre-existing agent instance to avoid nested event loops
     """
     import json
 
@@ -106,8 +110,15 @@ async def adaptive_segment_content_v2(content: str) -> Tuple[List[Dict[str, Any]
     print(f"   • Analyzing content for optimal segmentation...")
 
     try:
-        # Call the intelligent_segmenter agent
-        async with fast.run() as agent_instance:
+        # Use provided agent or create new one
+        should_close = False
+        if agent_instance is None:
+            # Only create new agent context if not provided
+            agent_context = fast.run()
+            agent_instance = await agent_context.__aenter__()
+            should_close = True
+
+        try:
             # Send the full content for analysis
             segmentation_prompt = f"""Analyze and segment the following content:
 
@@ -118,51 +129,56 @@ Provide a JSON segmentation plan following the specified format."""
 
             result_json = await agent_instance.intelligent_segmenter.send(segmentation_prompt)
 
-        # Parse the JSON response
-        # Try to extract JSON if there's any surrounding text
-        result_clean = result_json.strip()
+            # Parse the JSON response
+            # Try to extract JSON if there's any surrounding text
+            result_clean = result_json.strip()
 
-        # Find JSON bounds if wrapped in markdown code blocks
-        if '```json' in result_clean:
-            start = result_clean.find('```json') + 7
-            end = result_clean.find('```', start)
-            result_clean = result_clean[start:end].strip()
-        elif '```' in result_clean:
-            start = result_clean.find('```') + 3
-            end = result_clean.find('```', start)
-            result_clean = result_clean[start:end].strip()
+            # Find JSON bounds if wrapped in markdown code blocks
+            if '```json' in result_clean:
+                start = result_clean.find('```json') + 7
+                end = result_clean.find('```', start)
+                result_clean = result_clean[start:end].strip()
+            elif '```' in result_clean:
+                start = result_clean.find('```') + 3
+                end = result_clean.find('```', start)
+                result_clean = result_clean[start:end].strip()
 
-        segmentation_plan = json.loads(result_clean)
+            segmentation_plan = json.loads(result_clean)
 
-        # Validate the segmentation plan
-        segments_metadata = segmentation_plan.get('segments', [])
-        recommended_agent = segmentation_plan.get('recommended_agent', 'simple_processor')
+            # Validate the segmentation plan
+            segments_metadata = segmentation_plan.get('segments', [])
+            recommended_agent = segmentation_plan.get('recommended_agent', 'simple_processor')
 
-        if not segments_metadata:
-            raise ValueError("No segments returned in plan")
+            if not segments_metadata:
+                raise ValueError("No segments returned in plan")
 
-        print(f"   ✅ Segments identified: {len(segments_metadata)}")
-        print(f"   • Format detected: {segmentation_plan.get('format_detected', 'unknown')}")
-        print(f"   • Recommended agent: {recommended_agent}")
+            print(f"   ✅ Segments identified: {len(segments_metadata)}")
+            print(f"   • Format detected: {segmentation_plan.get('format_detected', 'unknown')}")
+            print(f"   • Recommended agent: {recommended_agent}")
 
-        # Extract actual text for each segment
-        enriched_segments = []
-        for seg_meta in segments_metadata:
-            start = seg_meta['start_word']
-            end = seg_meta['end_word']
+            # Extract actual text for each segment
+            enriched_segments = []
+            for seg_meta in segments_metadata:
+                start = seg_meta['start_word']
+                end = seg_meta['end_word']
 
-            segment_words = words[start:end]
-            segment_text = ' '.join(segment_words)
+                segment_words = words[start:end]
+                segment_text = ' '.join(segment_words)
 
-            # Enrich with metadata
-            enriched_segments.append({
-                'content': segment_text,
-                'metadata': seg_meta
-            })
+                # Enrich with metadata
+                enriched_segments.append({
+                    'content': segment_text,
+                    'metadata': seg_meta
+                })
 
-            print(f"   • Segment {seg_meta['id']}: {seg_meta['word_count']} words - {seg_meta['topic'][:60]}...")
+                print(f"   • Segment {seg_meta['id']}: {seg_meta['word_count']} words - {seg_meta['topic'][:60]}...")
 
-        return enriched_segments, recommended_agent
+            return enriched_segments, recommended_agent
+
+        finally:
+            # Clean up agent context if we created it
+            if should_close:
+                await agent_context.__aexit__(None, None, None)
 
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"⚠️  AI segmentation failed: {e}")

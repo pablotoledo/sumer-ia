@@ -99,7 +99,9 @@ class AgentInterface:
             if use_intelligent_segmentation and word_count > 3000:
                 # Usar segmentación AI para contenido grande
                 print(f"🧠 Using AI-powered intelligent segmentation ({word_count:,} words)")
-                enriched_segments, recommended_agent = await self._intelligent_segment_with_ai(content)
+                # Create agent context ONCE and reuse it
+                async with self._fast_agent.run() as agent_instance:
+                    enriched_segments, recommended_agent = await self._intelligent_segment_with_ai(content, agent_instance)
                 segmentation_method = 'intelligent_ai'
             else:
                 # Usar método programático para contenido pequeño o si se desactiva AI
@@ -437,10 +439,10 @@ class AgentInterface:
             except Exception as e:
                 st.warning(f"No se pudo eliminar archivo temporal {file_path}: {e}")
 
-    async def _intelligent_segment_with_ai(self, content: str) -> Tuple[List[Dict[str, Any]], str]:
-        """Wrapper para llamar a la función de segmentación inteligente."""
+    async def _intelligent_segment_with_ai(self, content: str, agent_instance) -> Tuple[List[Dict[str, Any]], str]:
+        """Wrapper para llamar a la función de segmentación inteligente con instancia del agente."""
         from src.enhanced_agents import adaptive_segment_content_v2
-        return await adaptive_segment_content_v2(content)
+        return await adaptive_segment_content_v2(content, agent_instance)
 
     def _build_segment_prompt(
         self,
@@ -483,24 +485,28 @@ class AgentInterface:
 
 # Helper functions para Streamlit
 def run_async_in_streamlit(coroutine):
-    """Ejecuta una coroutine asíncrona en Streamlit de forma simple."""
-    import nest_asyncio
+    """
+    Ejecuta una coroutine asíncrona en Streamlit de forma segura.
+    Evita conflictos de event loop creando un nuevo thread con su propio loop.
+    """
+    import concurrent.futures
+    import threading
 
-    # Aplicar nest_asyncio para permitir event loops anidados
-    nest_asyncio.apply()
+    def run_in_thread():
+        """Ejecuta la coroutine en un nuevo event loop en este thread."""
+        # Crear un nuevo event loop para este hilo
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        try:
+            return new_loop.run_until_complete(coroutine)
+        finally:
+            new_loop.close()
+            asyncio.set_event_loop(None)
 
-    # Obtener o crear event loop
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    # Ejecutar la coroutine en el event loop actual
-    return loop.run_until_complete(coroutine)
+    # Ejecutar en un hilo separado para evitar conflictos con otros event loops
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(run_in_thread)
+        return future.result()
 
 def create_progress_callback():
     """Crea un callback de progreso para Streamlit."""
