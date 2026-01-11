@@ -342,23 +342,29 @@ def show_advanced_options(agent_interface):
 
 
 def process_content_inline(agent_interface, content):
-    """Procesa el contenido y muestra resultados inline."""
+    """Procesa el contenido y muestra resultados inline con progreso dinámico."""
     
     progress_container = st.empty()
     
     with progress_container.container():
-        st.info("🔄 Iniciando procesamiento...")
+        st.markdown("### 🔄 Procesando...")
         
+        # UI de progreso
         progress_bar = st.progress(0)
         status_text = st.empty()
+        segment_info = st.empty()
+        
+        def update_progress(message: str, progress: float):
+            """Callback para actualizar UI de progreso."""
+            progress_bar.progress(min(1.0, max(0.0, progress)))
+            status_text.markdown(f"**{message}**")
         
         # Preparar archivos adicionales
         document_paths = []
         temp_files = []
         
         if 'additional_files' in st.session_state and st.session_state.additional_files:
-            status_text.text("📎 Preparando archivos adicionales...")
-            progress_bar.progress(10)
+            update_progress("📎 Preparando archivos adicionales...", 0.05)
             
             for file in st.session_state.additional_files:
                 temp_path = run_async_in_streamlit(
@@ -367,40 +373,47 @@ def process_content_inline(agent_interface, content):
                 document_paths.append(temp_path)
                 temp_files.append(temp_path)
         
-        status_text.text("⚡ Procesando con FastAgent...")
-        progress_bar.progress(30)
+        update_progress("🧠 Analizando contenido...", 0.08)
         
         try:
             selected_agent = st.session_state.get('selected_agent')
             use_intelligent = st.session_state.get('use_intelligent_segmentation', True)
+            enable_qa = st.session_state.get('enable_qa', True)
+            questions_per_section = st.session_state.get('questions_per_section', 4)
             
+            # Procesar con callback de progreso dinámico
             result = run_async_in_streamlit(
                 agent_interface.process_content(
                     content=content,
                     documents=document_paths if document_paths else None,
-                    progress_callback=None,
+                    progress_callback=update_progress,
                     agent_override=selected_agent,
-                    use_intelligent_segmentation=use_intelligent
+                    use_intelligent_segmentation=use_intelligent,
+                    enable_qa=enable_qa,
+                    questions_per_section=questions_per_section
                 )
             )
             
-            progress_bar.progress(90)
-            status_text.text("✨ Finalizando...")
+            update_progress("✨ Generando documento final...", 0.95)
             
             # Guardar resultado
             st.session_state.processing_result = result
             
-            progress_bar.progress(100)
-            
             if result.get('success'):
-                status_text.text("🎉 ¡Completado!")
+                update_progress("🎉 ¡Procesamiento completado!", 1.0)
+                segment_info.success(
+                    f"✅ **{result.get('total_segments', 0)} segmentos** procesados "
+                    f"con agente **{result.get('agent_used', 'N/A')}** "
+                    f"({result.get('retry_count', 0)} reintentos)"
+                )
             else:
-                status_text.text(f"❌ Error: {result.get('error', 'Error desconocido')}")
+                update_progress(f"❌ Error: {result.get('error', 'Error desconocido')}", 1.0)
         
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
             import traceback
-            st.code(traceback.format_exc())
+            with st.expander("Ver detalles del error"):
+                st.code(traceback.format_exc())
         
         finally:
             if temp_files:

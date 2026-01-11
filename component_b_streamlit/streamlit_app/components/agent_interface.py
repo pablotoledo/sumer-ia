@@ -10,13 +10,96 @@ import asyncio
 import streamlit as st
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 import tempfile
 import os
 
 # Añadir el directorio padre para importar módulos de FastAgent
 parent_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(parent_dir))
+
+
+class ProcessingProgress:
+    """
+    Rastrea el progreso del procesamiento de forma dinámica.
+    
+    Calcula el progreso basándose en:
+    - Número total de segmentos
+    - Segmento actual siendo procesado
+    - Paso actual dentro del pipeline (puntuación, formato, título, Q&A)
+    """
+    
+    STEPS = ["Puntuando", "Formateando", "Titulando", "Generando Q&A"]
+    
+    def __init__(self, total_segments: int, steps_per_segment: int = 1):
+        self.total_segments = max(1, total_segments)
+        self.steps_per_segment = steps_per_segment
+        self.current_segment = 0
+        self.current_step = 0
+        self.phase = "Iniciando"
+        self._callback: Optional[Callable[[str, float], None]] = None
+    
+    def set_callback(self, callback: Callable[[str, float], None]):
+        """Establece el callback para notificar progreso."""
+        self._callback = callback
+    
+    def set_phase(self, phase: str):
+        """Establece la fase actual (Segmentando, Procesando, Finalizando)."""
+        self.phase = phase
+        self._notify()
+    
+    def start_segment(self, segment_number: int, topic: str = ""):
+        """Marca el inicio de procesamiento de un segmento."""
+        self.current_segment = segment_number
+        self.current_step = 0
+        self.phase = f"Procesando{': ' + topic[:40] if topic else ''}"
+        self._notify()
+    
+    def advance_step(self, step_name: str = ""):
+        """Avanza al siguiente paso dentro del segmento."""
+        self.current_step += 1
+        if step_name:
+            self.phase = step_name
+        self._notify()
+    
+    def complete_segment(self):
+        """Marca un segmento como completado."""
+        self.current_step = self.steps_per_segment
+        self._notify()
+    
+    @property
+    def progress(self) -> float:
+        """Retorna el progreso como valor entre 0 y 1."""
+        if self.total_segments == 0:
+            return 0.0
+        
+        # Base: 10% para segmentación, 10% para finalización
+        # 80% restante dividido entre segmentos
+        segment_progress = (self.current_segment - 1) / self.total_segments
+        step_progress = self.current_step / max(1, self.steps_per_segment) / self.total_segments
+        
+        # Escalar al 80% del rango total (10% inicial + 10% final reservados)
+        return 0.10 + 0.80 * (segment_progress + step_progress)
+    
+    @property  
+    def status(self) -> str:
+        """Retorna mensaje de estado legible."""
+        if self.current_segment == 0:
+            return self.phase
+        return f"Segmento {self.current_segment}/{self.total_segments}: {self.phase}"
+    
+    def _notify(self):
+        """Notifica el progreso actual si hay callback."""
+        if self._callback:
+            self._callback(self.status, self.progress)
+    
+    def finalize(self):
+        """Marca el procesamiento como completado."""
+        self.current_segment = self.total_segments
+        self.current_step = self.steps_per_segment
+        self.phase = "¡Completado!"
+        self._notify()
+
 
 class AgentInterface:
     """Interfaz para comunicarse con FastAgent."""
@@ -69,7 +152,9 @@ class AgentInterface:
         documents: Optional[List[str]] = None,
         progress_callback=None,
         agent_override: Optional[str] = None,
-        use_intelligent_segmentation: bool = True
+        use_intelligent_segmentation: bool = True,
+        enable_qa: bool = True,
+        questions_per_section: int = 4
     ) -> Dict[str, Any]:
         """
         Procesa contenido usando FastAgent.
@@ -79,7 +164,9 @@ class AgentInterface:
             documents: Lista de rutas a documentos adicionales
             progress_callback: Función para reportar progreso
             agent_override: Agente específico a usar (opcional)
-            use_intelligent_segmentation: Si True, usa GPT-4.1 para segmentar inteligentemente
+            use_intelligent_segmentation: Si True, usa GPT-4.1 para segmentar
+            enable_qa: Si True, genera Q&A (por defecto True)
+            questions_per_section: Número de preguntas por sección (2-8)
 
         Returns:
             Dict con resultado del procesamiento
@@ -147,13 +234,15 @@ class AgentInterface:
                 # IMPORTANTE: Cada iteración crea una NUEVA sesión = CONTEXTO LIMPIO
                 try:
                     async with agent.run() as agent_instance:  # Nueva sesión aquí
-                        # Construir prompt enriquecido con metadata
+                        # Construir prompt enriquecido con metadata y config Q&A
                         segment_prompt = self._build_segment_prompt(
                             segment_content=segment_content,
                             segment_number=i + 1,
                             total_segments=total_segments,
                             metadata=segment_metadata,
-                            multimodal_context=multimodal_context
+                            multimodal_context=multimodal_context,
+                            enable_qa=enable_qa,
+                            questions_per_section=questions_per_section
                         )
 
                         result = await self._rate_limit_handler.execute_with_retry(
@@ -174,7 +263,7 @@ class AgentInterface:
                             delay = self._get_inter_segment_delay()
                             if delay > 0:
                                 if progress_callback:
-                                    progress_callback(f"Esperando {delay}s antes del siguiente segmento...", current_progress)
+                                    progress_callback(f"Esperando {delay}s antes del siguiente segmento...", progress)
                                 await asyncio.sleep(delay)
 
                 except Exception as e:
@@ -448,7 +537,9 @@ class AgentInterface:
         segment_number: int,
         total_segments: int,
         metadata: Dict[str, Any],
-        multimodal_context: str
+        multimodal_context: str,
+        enable_qa: bool = True,
+        questions_per_section: int = 4
     ) -> str:
         """
         Construye el prompt para procesar un segmento, incluyendo metadata útil.
@@ -471,6 +562,12 @@ class AgentInterface:
                     prompt_parts.append(f"• Conceptos clave: {', '.join(metadata['key_concepts'][:3])}")
                 if 'section_type' in metadata:
                     prompt_parts.append(f"• Tipo de sección: {metadata['section_type']}")
+
+        # Instrucciones de Q&A
+        if enable_qa:
+            prompt_parts.append(f"\nINSTRUCCIONES Q&A: Genera exactamente {questions_per_section} preguntas y respuestas educativas.")
+        else:
+            prompt_parts.append("\nINSTRUCCIONES Q&A: NO generes preguntas ni respuestas.")
 
         # Contenido del segmento
         prompt_parts.append(f"\nCONTENIDO:\n{segment_content}")
