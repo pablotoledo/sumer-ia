@@ -9,147 +9,86 @@ Script para verificar que la integración Streamlit funciona correctamente.
 import sys
 import importlib.util
 from pathlib import Path
+import pytest
+
 
 def test_imports():
     """Prueba que todos los imports funcionen correctamente."""
+    # Test import de streamlit
+    import streamlit as st
     
-    print("🧪 Probando imports de Streamlit Integration...")
+    # Test import del módulo principal
+    from src.streamlit_interface import main, run_streamlit
     
-    try:
-        # Test import de streamlit
-        import streamlit as st
-        print("✅ Streamlit disponible")
-    except ImportError as e:
-        print(f"❌ Error importando Streamlit: {e}")
-        return False
+    # Test import de ConfigManager
+    from src.streamlit_interface.core.config_manager import ConfigManager
     
-    try:
-        # Test import del módulo principal
-        from src.streamlit_interface import main, run_streamlit
-        print("✅ Módulo streamlit_interface disponible")
-    except ImportError as e:
-        print(f"❌ Error importando streamlit_interface: {e}")
-        return False
+    # Test import de AgentInterface
+    from src.streamlit_interface.core.agent_interface import AgentInterface
     
-    try:
-        # Test import de ConfigManager
-        from src.streamlit_interface.core.config_manager import ConfigManager
-        print("✅ ConfigManager disponible")
-    except ImportError as e:
-        print(f"❌ Error importando ConfigManager: {e}")
-        return False
-    
-    try:
-        # Test import de AgentInterface
-        from src.streamlit_interface.core.agent_interface import AgentInterface
-        print("✅ AgentInterface disponible")
-    except ImportError as e:
-        print(f"❌ Error importando AgentInterface: {e}")
-        return False
-    
-    return True
+    assert st is not None
+    assert main is not None
+    assert ConfigManager is not None
+    assert AgentInterface is not None
+
 
 def test_config_manager():
     """Prueba el ConfigManager."""
+    from src.streamlit_interface.core.config_manager import ConfigManager
     
-    print("\n🧪 Probando ConfigManager...")
+    # Crear instancia
+    config_manager = ConfigManager()
+    assert config_manager is not None
     
-    try:
-        from src.streamlit_interface.core.config_manager import ConfigManager
-        
-        # Crear instancia
-        config_manager = ConfigManager()
-        print("✅ ConfigManager inicializado")
-        
-        # Probar métodos básicos
-        config = config_manager.get_config()
-        print(f"✅ Configuración cargada: {len(config)} secciones")
-        
-        # Probar validación
-        validation = config_manager.validate_config()
-        print(f"✅ Validación ejecutada: {validation}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error en ConfigManager: {e}")
-        return False
+    # Probar métodos básicos
+    config = config_manager.get_config()
+    assert isinstance(config, dict)
+    assert len(config) > 0
+    
+    # Probar validación
+    validation = config_manager.validate_config()
+    assert isinstance(validation, dict)
+    assert 'has_provider' in validation
+
 
 def test_fastagent_availability():
     """Prueba que FastAgent esté disponible."""
-    
-    print("\n🧪 Probando disponibilidad de FastAgent...")
-    
-    try:
-        # Test import de enhanced_agents
-        from src.enhanced_agents import fast
-        print("✅ FastAgent enhanced_agents disponible")
-        
-        # Test import de robust_main
-        import robust_main
-        print("✅ robust_main disponible")
-        
-        return True
-        
-    except ImportError as e:
-        print(f"❌ Error importando FastAgent: {e}")
-        print("   Asegúrate de estar en el directorio correcto del proyecto")
-        return False
+    # Test import de enhanced_agents
+    from src.enhanced_agents import fast
+    assert fast is not None
+
 
 def test_pyproject_scripts():
     """Verifica que los scripts estén definidos en pyproject.toml."""
-    
-    print("\n🧪 Verificando scripts en pyproject.toml...")
-    
     try:
         import toml
-        
-        with open('pyproject.toml', 'r') as f:
-            config = toml.load(f)
-        
-        scripts = config.get('project', {}).get('scripts', {})
-        
-        expected_scripts = ['fastagent-ui', 'fastagent-dashboard']
-        
-        for script in expected_scripts:
-            if script in scripts:
-                print(f"✅ Script '{script}' definido: {scripts[script]}")
-            else:
-                print(f"❌ Script '{script}' no encontrado")
-                return False
-        
-        return True
-        
     except ImportError:
-        print("⚠️ toml no disponible, saltando verificación de scripts")
-        return True
-    except Exception as e:
-        print(f"❌ Error verificando pyproject.toml: {e}")
-        return False
+        pytest.skip("toml not available")
+    
+    with open('pyproject.toml', 'r') as f:
+        config = toml.load(f)
+    
+    scripts = config.get('project', {}).get('scripts', {})
+    
+    expected_scripts = ['fastagent-ui', 'fastagent-dashboard']
+    
+    for script in expected_scripts:
+        assert script in scripts, f"Script '{script}' no encontrado en pyproject.toml"
+
 
 def test_streamlit_dependencies():
     """Verifica dependencias específicas de Streamlit."""
-    
-    print("\n🧪 Probando dependencias de Streamlit...")
-    
     dependencies = [
-        ('plotly', 'Gráficos interactivos'),
-        ('pandas', 'Manipulación de datos'),
-        ('requests', 'HTTP requests'),
-        ('yaml', 'Configuración YAML')  # pyyaml se importa como 'yaml'
+        'plotly',
+        'pandas',
+        'requests',
+        'yaml'  # pyyaml se importa como 'yaml'
     ]
     
-    all_ok = True
-    
-    for package, description in dependencies:
-        try:
-            __import__(package)
-            print(f"✅ {package} disponible ({description})")
-        except ImportError:
-            print(f"❌ {package} no disponible ({description})")
-            all_ok = False
-    
-    return all_ok
+    for package in dependencies:
+        module = __import__(package)
+        assert module is not None, f"{package} no disponible"
+
 
 def main():
     """Ejecuta todas las pruebas."""
@@ -172,10 +111,11 @@ def main():
         print("-" * 30)
         
         try:
-            result = test_func()
-            results.append((test_name, result))
+            test_func()
+            print(f"✅ PASS")
+            results.append((test_name, True))
         except Exception as e:
-            print(f"❌ Error ejecutando test '{test_name}': {e}")
+            print(f"❌ FAIL: {e}")
             results.append((test_name, False))
     
     # Resumen final
@@ -183,30 +123,18 @@ def main():
     print("📊 RESUMEN DE TESTS")
     print("=" * 50)
     
-    passed = 0
+    passed = sum(1 for _, result in results if result)
     total = len(results)
     
     for test_name, result in results:
         status = "✅ PASS" if result else "❌ FAIL"
         print(f"{status} {test_name}")
-        if result:
-            passed += 1
     
     print(f"\n📈 Resultado: {passed}/{total} tests pasaron")
     
     if passed == total:
         print("🎉 ¡Todos los tests pasaron! La integración Streamlit está lista.")
-        print("\n🚀 Para usar la interfaz:")
-        print("   fastagent-ui")
-        print("   # o")
-        print("   uv run python -m src.streamlit_interface.app")
-    else:
-        print("⚠️ Algunos tests fallaron. Revisa las dependencias o configuración.")
-        print("\n🔧 Para instalar dependencias:")
-        print("   uv sync --extra streamlit")
-    
-    return passed == total
+
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    main()

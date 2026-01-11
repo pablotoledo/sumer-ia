@@ -28,6 +28,23 @@ from components.agent_interface import (
 )
 
 
+def clear_session_state():
+    """Limpia todo el estado de sesión relacionado con procesamiento."""
+    keys_to_clear = [
+        'processing_result',
+        'input_content',
+        'additional_files',
+        'selected_agent',
+        'use_intelligent_segmentation',
+        'enable_qa',
+        'questions_per_section',
+        'agent_interface'  # Forzar recreación del agent interface
+    ]
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
 def main():
     """Página principal de inicio."""
     
@@ -57,6 +74,13 @@ def main():
     
     # Mostrar estado del sistema en formato compacto
     show_compact_status(config_manager)
+    
+    # Botón para limpiar sesión (en caso de estado colgado)
+    with st.sidebar:
+        st.markdown("---")
+        if st.button("🗑️ Limpiar Sesión", use_container_width=True, help="Limpia todo el estado y empieza de nuevo"):
+            clear_session_state()
+            st.rerun()
     
     st.markdown("---")
     
@@ -288,6 +312,33 @@ def show_advanced_options(agent_interface):
         )
         
         st.session_state.use_intelligent_segmentation = use_intelligent
+    
+    # Configuración de Q&A
+    st.markdown("---")
+    st.markdown("**❓ Generación de Q&A**")
+    
+    col_qa1, col_qa2 = st.columns(2)
+    
+    with col_qa1:
+        enable_qa = st.checkbox(
+            "Generar preguntas y respuestas",
+            value=st.session_state.get('enable_qa', True),
+            help="Genera preguntas educativas al final de cada sección"
+        )
+        st.session_state.enable_qa = enable_qa
+    
+    with col_qa2:
+        if enable_qa:
+            questions_per_section = st.slider(
+                "Preguntas por sección:",
+                min_value=2,
+                max_value=8,
+                value=st.session_state.get('questions_per_section', 4),
+                help="Número de preguntas a generar por cada segmento"
+            )
+            st.session_state.questions_per_section = questions_per_section
+        else:
+            st.info("Q&A deshabilitado")
 
 
 def process_content_inline(agent_interface, content):
@@ -413,11 +464,8 @@ def show_results_panel():
     
     with col2:
         if st.button("🔄 Procesar otro", use_container_width=True):
-            # Limpiar estado
-            if 'processing_result' in st.session_state:
-                del st.session_state.processing_result
-            if 'input_content' in st.session_state:
-                del st.session_state.input_content
+            # Limpiar estado completamente
+            clear_session_state()
             st.rerun()
 
 

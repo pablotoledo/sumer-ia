@@ -70,3 +70,10 @@ target-version = ['py310']
 [tool.isort]
 profile = "black"
 line_length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
