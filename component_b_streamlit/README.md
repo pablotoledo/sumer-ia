@@ -36,16 +36,7 @@ generic:
   base_url: "http://localhost:11434/v1"
 ```
 
-### 3A. Usar desde línea de comandos (CLI)
-```bash
-# Procesamiento básico
-fastagent-cli -i transcription.txt -o output.md
-
-# Con configuración avanzada
-fastagent-cli -i input.txt -o output.md --preset conservative --segmentation intelligent
-```
-
-### 3B. Ejecutar la interfaz web
+### 3. Ejecutar la interfaz web
 ```bash
 uv run streamlit run streamlit_app/streamlit_app.py
 ```
@@ -135,16 +126,14 @@ graph LR
 ## 🖥️ Interfaz Web
 
 ### Páginas disponibles:
-- **🏠 Dashboard**: Estado del sistema y acceso rápido
-- **⚙️ Configuración**: Gestión de proveedores LLM (Azure, Ollama, OpenAI, Anthropic)
-- **📝 Procesamiento**: Upload y procesamiento de archivos con progreso visual
-- **🤖 Agentes**: Gestión de prompts, testing y configuración avanzada
+- **🏠 Inicio**: Procesamiento rápido de transcripciones
+- **⚙️ Configuración**: Gestión de proveedores LLM (Básica/Avanzada/Experto)
 
 ### Flujo de uso:
 1. **Configurar** proveedor LLM en la página de Configuración
-2. **Subir** transcripción en la página de Procesamiento
+2. **Pegar/subir** transcripción en la página de Inicio
 3. **Procesar** con visualización en tiempo real
-4. **Descargar** resultados en TXT o MD
+4. **Descargar** resultados en Markdown
 
 ## 🧠 Segmentación Inteligente con GPT-4.1
 
@@ -226,282 +215,12 @@ rate_limiting:
 ## 🛠️ Scripts Disponibles
 
 ```bash
-# CLI de procesamiento (nuevo)
-fastagent-cli -i input.txt -o output.md
-
 # Interfaz web principal
 fastagent-ui
 
-# Dashboard alternativo
-fastagent-dashboard
-
-# Script legacy de procesamiento
-uv run python robust_main.py --input archivo.txt --output resultado.md
+# Procesamiento por línea de comandos
+uv run python scripts/cli.py --input archivo.txt --output resultado.md
 ```
-
----
-
-## 💻 Uso del CLI (Command-Line Interface)
-
-### **Instalación y Configuración**
-
-```bash
-# 1. Instalar dependencias
-uv sync
-
-# 2. Copiar plantilla de variables de entorno
-cp .env.example .env
-
-# 3. Editar .env con tus credenciales
-nano .env
-
-# 4. Verificar instalación
-fastagent-cli --version
-```
-
-### **Ejemplos de Uso**
-
-#### **Básico**
-```bash
-# Procesamiento simple
-fastagent-cli -i transcription.txt -o output.md
-```
-
-#### **Con Documentos Adicionales (Multimodal)**
-```bash
-# Incluir PDFs, imágenes u otros documentos para contexto
-fastagent-cli -i input.txt -o output.md -d slides.pdf notes.txt diagram.png
-```
-
-#### **Usando Presets de Configuración**
-```bash
-# Para ambientes con rate limiting estricto (Azure S0)
-fastagent-cli -i input.txt -o output.md --preset conservative
-
-# Balance entre velocidad y calidad
-fastagent-cli -i input.txt -o output.md --preset balanced
-
-# Máxima calidad con segmentación AI
-fastagent-cli -i input.txt -o output.md --preset intelligent
-
-# Máxima velocidad
-fastagent-cli -i input.txt -o output.md --preset fast
-```
-
-#### **Configuración Avanzada**
-```bash
-# Segmentación inteligente con GPT-4.1
-fastagent-cli -i input.txt -o output.md --segmentation intelligent
-
-# Agente específico para reuniones
-fastagent-cli -i meeting.txt -o output.md --agent meeting_processor
-
-# Control manual de rate limiting
-fastagent-cli -i input.txt -o output.md \
-  --delay 45 \
-  --max-retries 5 \
-  --retry-delay 90
-
-# Sin Q&A (más rápido)
-fastagent-cli -i input.txt -o output.md --no-qa
-
-# Modo verbose para debugging
-fastagent-cli -i input.txt -o output.md -v
-
-# Simular sin hacer llamadas LLM
-fastagent-cli -i input.txt -o output.md --dry-run
-```
-
-#### **Usando Variables de Entorno**
-```bash
-# Configurar variables de entorno
-export FASTAGENT_MODEL=azure.gpt-4.1
-export FASTAGENT_DELAY=45
-export FASTAGENT_PROVIDER=azure
-
-# Ejecutar sin argumentos adicionales
-fastagent-cli -i input.txt -o output.md
-```
-
-### **Opciones Disponibles**
-
-#### **Argumentos Requeridos**
-```
--i, --input          Archivo de entrada (TXT, MD, PDF, DOCX)
--o, --output         Archivo de salida (MD, TXT)
-```
-
-#### **Input/Output**
-```
--d, --documents      Documentos adicionales para contexto multimodal
---output-format      Formato de salida (md, txt) [default: md]
-```
-
-#### **Modelo y Proveedor**
-```
---model              Modelo a usar (azure.gpt-4.1, generic.llama3.1, etc.)
---provider           Proveedor LLM (azure, ollama, openai, anthropic)
---config             Archivo de configuración [default: fastagent.config.yaml]
-```
-
-#### **Procesamiento**
-```
---agent              Agente a usar (auto, simple_processor, meeting_processor)
---segmentation       Método de segmentación (intelligent, programmatic, auto)
---enable-qa          Habilitar generación de Q&A [default: enabled]
---no-qa              Deshabilitar generación de Q&A
---qa-questions       Número de preguntas por segmento [default: 4]
-```
-
-#### **Rate Limiting**
-```
---preset             Preset de configuración (fast, balanced, conservative, intelligent)
---delay              Delay entre requests en segundos
---max-retries        Máximo de reintentos en error 429
---retry-delay        Delay base para reintentos (backoff exponencial)
-```
-
-#### **General**
-```
--v, --verbose        Logging detallado
---no-progress        Desactivar barra de progreso
---dry-run            Simular procesamiento sin LLM calls
---version            Mostrar versión
-```
-
-### **Presets Explicados**
-
-| Preset | Segmentación | Q&A | Delay | Retries | Uso Recomendado |
-|--------|-------------|-----|-------|---------|-----------------|
-| **fast** | Programática | No | 10s | 2 | Procesamiento rápido, sin Q&A |
-| **balanced** | Auto | Sí (3) | 20s | 3 | Balance velocidad/calidad (default) |
-| **conservative** | Programática | Sí (4) | 45s | 5 | Azure S0 tier, rate limiting estricto |
-| **intelligent** | AI (GPT-4.1) | Sí (5) | 30s | 3 | Máxima calidad, contenido >3000 palabras |
-
-### **Variables de Entorno**
-
-Crea un archivo `.env` basado en `.env.example`:
-
-```bash
-# General
-FASTAGENT_PROVIDER=azure
-FASTAGENT_MODEL=azure.gpt-4.1
-FASTAGENT_OUTPUT_DIR=./output
-
-# Rate Limiting
-FASTAGENT_DELAY=30
-FASTAGENT_MAX_RETRIES=3
-FASTAGENT_RETRY_DELAY=60
-
-# Azure OpenAI
-AZURE_API_KEY=your-key
-AZURE_BASE_URL=https://your-resource.cognitiveservices.azure.com/
-AZURE_DEPLOYMENT=gpt-4.1
-AZURE_API_VERSION=2025-01-01-preview
-
-# Ollama
-OLLAMA_BASE_URL=http://localhost:11434/v1
-
-# OpenAI
-OPENAI_API_KEY=your-key
-
-# Anthropic
-ANTHROPIC_API_KEY=your-key
-```
-
-### **Salida del CLI**
-
-El CLI muestra:
-
-1. **Resumen de configuración** antes de procesar
-2. **Barra de progreso** durante procesamiento
-3. **Estadísticas finales** al completar:
-   - Tiempo de procesamiento
-   - Segmentos procesados
-   - Método de segmentación usado
-   - Tasa de retención de contenido
-   - Reintentos por rate limiting
-
-**Ejemplo de salida:**
-
-```
-============================================================
-CONFIGURATION SUMMARY
-============================================================
-Input:              transcription.txt
-Output:             output.md
-Model:              azure.gpt-4.1
-Agent:              auto
-Segmentation:       intelligent
-Q&A Generation:     Enabled
-  Questions/segment: 4
-
-Rate Limiting:
-  Delay:            30s between requests
-  Max retries:      3
-  Retry delay:      60s base
-============================================================
-
-📊 Estimated processing time: ~5 minutes
-📝 Content size: 5,432 words
-
-[████████████████████████████████████████] 100% - ¡Procesamiento completado!
-
-============================================================
-PROCESSING COMPLETED SUCCESSFULLY
-============================================================
-
-⏱️  Processing Time: 312.5 seconds
-📁 Output File: output.md
-
-📊 Statistics:
-   Agent used:       simple_processor
-   Segmentation:     intelligent_ai
-   Total segments:   4
-   Retry count:      0
-
-📝 Content:
-   Original words:   5,432
-   Final words:      5,891
-   Retention rate:   108.4%
-
-============================================================
-```
-
-### **Troubleshooting CLI**
-
-#### **Error: Command not found: fastagent-cli**
-```bash
-# Reinstalar
-uv sync
-
-# O ejecutar directamente
-uv run python fastagent_cli.py -i input.txt -o output.md
-```
-
-#### **Error: Input file not found**
-Verifica que la ruta sea correcta y que el archivo exista.
-
-#### **Error: No LLM provider configured**
-```bash
-# Verificar configuración
-cat fastagent.config.yaml
-
-# O usar variables de entorno
-export FASTAGENT_MODEL=azure.gpt-4.1
-export AZURE_API_KEY=your-key
-```
-
-#### **Muchos reintentos por rate limiting**
-```bash
-# Aumentar delay
-fastagent-cli -i input.txt -o output.md --delay 60
-
-# O usar preset conservador
-fastagent-cli -i input.txt -o output.md --preset conservative
-```
-
----
 
 ## 🧪 Testing
 
@@ -509,8 +228,8 @@ fastagent-cli -i input.txt -o output.md --preset conservative
 # Ejecutar todos los tests
 uv run pytest tests/ -v
 
-# Test específico de Streamlit
-uv run python test_streamlit_integration.py
+# Test de integración Streamlit
+uv run python tests/integration/test_streamlit_integration.py
 ```
 
 ## 📊 Características Técnicas
@@ -537,9 +256,15 @@ El sistema ahora incluye **prevención automática**, pero si aún así ocurren:
    - Más reintentos = más tolerancia a errores
 3. **Revisar métricas** después de procesar
    - Si "Reintentos por rate limit" > 3, aumentar delays
-4. Ver `RATE_LIMIT_IMPROVEMENTS.md` para configuración detallada por tier
+4. Ver `docs/history/RATE_LIMIT_IMPROVEMENTS.md` para configuración detallada por tier
 
 ### Problemas de dependencias
 ```bash
 uv sync --reinstall
 ```
+
+## 📚 Documentación
+
+- [Guía de Inicio Rápido](docs/QUICKSTART.md)
+- [Configuración Detallada](docs/CONFIGURATION.md)
+- [Funciones Avanzadas](docs/ADVANCED.md)

@@ -52,7 +52,6 @@ streamlit = [
 ]
 
 [project.scripts]
-fastagent-cli = "fastagent_cli:main"
 fastagent-ui = "src.streamlit_interface.cli:main"
 fastagent-dashboard = "src.streamlit_interface.cli:main"
 fastagent-streamlit = "src.streamlit_interface.cli:main"
@@ -71,3 +70,10 @@ target-version = ['py310']
 [tool.isort]
 profile = "black"
 line_length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
